@@ -11,10 +11,6 @@ interface Config {
     username?: string;
     password?: string;
   };
-  tokens?: {
-    refreshToken?: string;
-    accessToken?: string;
-  };
 }
 
 async function checkServerReady(maxAttempts = 30): Promise<boolean> {
@@ -79,13 +75,24 @@ async function main() {
 
     // Initialize Puppeteer renderer
     const renderer = new PuppeteerRenderer();
-    await renderer.initialize();
 
-    // Check if we already have a refresh token
-    const needsAuth = !config.tokens?.refreshToken;
+    // Initialize app browser first (fullscreen) and navigate to show wait state
+    console.log('Initializing app browser...');
+    await renderer.initializeAppBrowser();
+    await renderer.navigateToApp();
+    console.log('App browser opened in fullscreen. Waiting state displayed.');
+
+    // Check if we already have a valid token
+    const existingToken = await renderer.getBearerToken();
+    const needsAuth = !existingToken;
 
     if (needsAuth) {
-      console.log('No refresh token found. Starting authentication flow...');
+      console.log('No valid token found. Starting authentication in headless browser...');
+      
+      // Initialize headless auth browser
+      await renderer.initializeAuthBrowser();
+      
+      // Perform authentication in headless browser
       const tokenData = await renderer.authenticateSpotify();
       
       if (!tokenData) {
@@ -94,11 +101,22 @@ async function main() {
         process.exit(1);
       }
 
-      // Save tokens to config
+      // Save token to file
       await renderer.saveTokens();
+      
+      // Close auth browser (no longer needed)
+      if (renderer.getAuthPage()) {
+        const authBrowser = (renderer as any).authBrowser;
+        if (authBrowser) {
+          await authBrowser.close();
+          (renderer as any).authBrowser = null;
+          (renderer as any).authPage = null;
+        }
+      }
+      
+      console.log('Authentication complete. App will automatically detect token.');
     } else {
-      console.log('Refresh token found. Skipping authentication.');
-      console.log('Bearer token will be retrieved via refresh token API.');
+      console.log('Valid token found. Skipping authentication.');
     }
 
     // Get and display bearer token
@@ -106,14 +124,10 @@ async function main() {
     if (bearerToken) {
       console.log('\n=== Bearer Token Retrieved ===');
       console.log(`Token: ${bearerToken.substring(0, 20)}...${bearerToken.substring(bearerToken.length - 10)}`);
-      console.log(`Full Token: ${bearerToken}`);
       console.log('==============================\n');
     } else {
       console.log('Warning: Could not retrieve bearer token');
     }
-
-    // Navigate to the application
-    await renderer.navigateToApp();
 
     console.log('Application is running. Browser window is open.');
     console.log('Press Ctrl+C to exit.');

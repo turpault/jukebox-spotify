@@ -10,10 +10,6 @@ interface Config {
     username?: string;
     password?: string;
   };
-  tokens?: {
-    refreshToken?: string;
-    accessToken?: string;
-  };
 }
 
 let config: Config;
@@ -34,57 +30,85 @@ interface TokenData {
 }
 
 export class PuppeteerRenderer {
-  private browser: Browser | null = null;
-  private page: Page | null = null;
+  private authBrowser: Browser | null = null;
+  private authPage: Page | null = null;
+  private appBrowser: Browser | null = null;
+  private appPage: Page | null = null;
   private tokenData: TokenData | null = null;
 
-  async initialize(): Promise<void> {
+  async initializeAppBrowser(): Promise<void> {
     await loadConfig();
     
-    console.log('Launching browser...');
-    this.browser = await puppeteer.launch({
+    console.log('Launching app browser in fullscreen...');
+    this.appBrowser = await puppeteer.launch({
       headless: false,
       defaultViewport: null,
       args: [
+        '--start-fullscreen',
         '--start-maximized',
         '--disable-infobars',
         '--disable-blink-features=AutomationControlled'
       ]
     });
 
-    const pages = await this.browser.pages();
-    this.page = pages[0] || await this.browser.newPage();
+    const pages = await this.appBrowser.pages();
+    this.appPage = pages[0] || await this.appBrowser.newPage();
     
     // Get screen dimensions and set viewport to full screen
-    const viewport = await this.page.evaluate(() => ({
+    const viewport = await this.appPage.evaluate(() => ({
       width: window.screen.width,
       height: window.screen.height
     }));
-    await this.page.setViewport({ width: viewport.width, height: viewport.height });
+    await this.appPage.setViewport({ width: viewport.width, height: viewport.height });
     
     // Listen for console messages
-    this.page.on('console', msg => {
+    this.appPage.on('console', msg => {
       const type = msg.type();
       const text = msg.text();
       if (type === 'error') {
-        console.error(`[Browser] ${text}`);
+        console.error(`[App Browser] ${text}`);
       } else {
-        console.log(`[Browser] ${text}`);
+        console.log(`[App Browser] ${text}`);
       }
     });
 
     // Listen for page errors
-    this.page.on('pageerror', error => {
-      console.error(`[Page Error] ${error.message}`);
+    this.appPage.on('pageerror', error => {
+      console.error(`[App Page Error] ${error.message}`);
+    });
+  }
+
+  async initializeAuthBrowser(): Promise<void> {
+    await loadConfig();
+    
+    console.log('Launching headless authentication browser...');
+    this.authBrowser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--disable-blink-features=AutomationControlled'
+      ]
+    });
+
+    this.authPage = await this.authBrowser.newPage();
+    
+    // Listen for console messages
+    this.authPage.on('console', msg => {
+      const type = msg.type();
+      const text = msg.text();
+      if (type === 'error') {
+        console.error(`[Auth Browser] ${text}`);
+      } else {
+        console.log(`[Auth Browser] ${text}`);
+      }
     });
   }
 
   async authenticateSpotify(): Promise<TokenData | null> {
-    if (!this.page) {
-      throw new Error('Page not initialized. Call initialize() first.');
+    if (!this.authPage) {
+      throw new Error('Auth page not initialized. Call initializeAuthBrowser() first.');
     }
 
-    console.log('Starting Spotify 3LO authentication...');
+    console.log('Starting Spotify 3LO authentication in headless browser...');
 
     // Build the authorization URL
     const scope = 'streaming user-read-email user-read-private user-modify-playback-state user-read-playback-state';
@@ -97,13 +121,13 @@ export class PuppeteerRenderer {
     const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
 
     console.log(`Navigating to Spotify authorization page...`);
-    await this.page.goto(authUrl, { waitUntil: 'networkidle2' });
+    await this.authPage.goto(authUrl, { waitUntil: 'networkidle2' });
 
     // Wait for the login form to appear
     console.log('Waiting for login form...');
     let loginFormFound = false;
     try {
-      await this.page.waitForSelector('input[type="text"], input[type="email"], input[id*="username"], input[name*="username"], input[type="password"]', { timeout: 10000 });
+      await this.authPage.waitForSelector('input[type="text"], input[type="email"], input[id*="username"], input[name*="username"], input[type="password"]', { timeout: 10000 });
       loginFormFound = true;
     } catch (error) {
       console.log('Login form not found. User may already be logged in or page structure changed.');
@@ -126,10 +150,10 @@ export class PuppeteerRenderer {
         let usernameFilled = false;
         for (const selector of usernameSelectors) {
           try {
-            const usernameInput = await this.page.$(selector);
+            const usernameInput = await this.authPage.$(selector);
             if (usernameInput) {
-              await usernameInput.click({ clickCount: 3 }); // Select all existing text
-              await usernameInput.type(config.spotify.username, { delay: 50 });
+              await usernameInput.click({ clickCount: 3 });
+              await usernameInput.type(config.spotify.username!, { delay: 50 });
               usernameFilled = true;
               break;
             }
@@ -139,7 +163,8 @@ export class PuppeteerRenderer {
         }
 
         if (!usernameFilled) {
-          console.log('Warning: Could not find username field. Please enter manually.');
+          console.log('Warning: Could not find username field.');
+          return null;
         }
 
         // Find and fill password field
@@ -152,10 +177,10 @@ export class PuppeteerRenderer {
         let passwordFilled = false;
         for (const selector of passwordSelectors) {
           try {
-            const passwordInput = await this.page.$(selector);
+            const passwordInput = await this.authPage.$(selector);
             if (passwordInput) {
               await passwordInput.click({ clickCount: 3 });
-              await passwordInput.type(config.spotify.password, { delay: 50 });
+              await passwordInput.type(config.spotify.password!, { delay: 50 });
               passwordFilled = true;
               break;
             }
@@ -165,7 +190,8 @@ export class PuppeteerRenderer {
         }
 
         if (!passwordFilled) {
-          console.log('Warning: Could not find password field. Please enter manually.');
+          console.log('Warning: Could not find password field.');
+          return null;
         }
 
         // Submit the form
@@ -182,11 +208,11 @@ export class PuppeteerRenderer {
           let formSubmitted = false;
           for (const selector of submitSelectors) {
             try {
-              const submitButton = await this.page.$(selector);
+              const submitButton = await this.authPage.$(selector);
               if (submitButton) {
                 await submitButton.click();
                 formSubmitted = true;
-                await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+                await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
                 break;
               }
             } catch (e) {
@@ -196,8 +222,8 @@ export class PuppeteerRenderer {
 
           // If no submit button found, try pressing Enter
           if (!formSubmitted) {
-            await this.page.keyboard.press('Enter');
-            await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+            await this.authPage.keyboard.press('Enter');
+            await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
           }
 
           console.log('Login form submitted. Waiting for next step...');
@@ -206,21 +232,21 @@ export class PuppeteerRenderer {
           await new Promise(resolve => setTimeout(resolve, 2000));
           
           // Check if we're on a consent/authorization screen
-          const currentUrl = this.page.url();
+          const currentUrl = this.authPage.url();
           if (currentUrl.includes('accounts.spotify.com')) {
             // Might be on consent screen - try to find and click "Agree" or "Authorize" button
             try {
               await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for page to settle
               
               // Try to find buttons and check their text
-              const buttons = await this.page.$$('button');
+              const buttons = await this.authPage.$$('button');
               for (const button of buttons) {
                 try {
-                  const text = await this.page.evaluate(el => el.textContent?.trim(), button);
+                  const text = await this.authPage.evaluate(el => el.textContent?.trim(), button);
                   if (text && (text.toLowerCase().includes('agree') || text.toLowerCase().includes('authorize') || text.toLowerCase().includes('ok'))) {
                     console.log(`Found consent button: "${text}", clicking...`);
                     await button.click();
-                    await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+                    await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
                     break;
                   }
                 } catch (e) {
@@ -234,15 +260,16 @@ export class PuppeteerRenderer {
         }
       } catch (error) {
         console.error('Error during automated login:', error);
-        console.log('Please complete login manually in the browser...');
+        return null;
       }
     } else if (loginFormFound) {
-      console.log('No credentials provided in config. Please complete the authentication manually in the browser...');
+      console.error('No credentials provided in config. Cannot authenticate in headless mode.');
+      return null;
     } else {
       console.log('Already logged in or authentication page structure changed.');
     }
 
-    // Wait for user to complete authentication (or continue if automated)
+    // Wait for redirect to callback URL
     console.log('Waiting for redirect to callback URL...');
 
     // Wait for the callback URL
@@ -251,8 +278,7 @@ export class PuppeteerRenderer {
 
     try {
       // Wait for navigation to callback URL
-      // Check if current URL matches the callback path
-      await this.page.waitForFunction(
+      await this.authPage.waitForFunction(
         (expectedPath) => {
           try {
             const url = new URL(window.location.href);
@@ -265,7 +291,7 @@ export class PuppeteerRenderer {
         callbackPath
       );
 
-      const currentUrl = this.page.url();
+      const currentUrl = this.authPage.url();
       const url = new URL(currentUrl);
       const code = url.searchParams.get('code');
       const error = url.searchParams.get('error');
@@ -334,12 +360,12 @@ export class PuppeteerRenderer {
   }
 
   async navigateToApp(): Promise<void> {
-    if (!this.page) {
-      throw new Error('Page not initialized. Call initialize() first.');
+    if (!this.appPage) {
+      throw new Error('App page not initialized. Call initializeAppBrowser() first.');
     }
 
     console.log('Navigating to application...');
-    await this.page.goto('http://localhost:3000', { waitUntil: 'networkidle2' });
+    await this.appPage.goto('http://localhost:3000', { waitUntil: 'networkidle2' });
   }
 
   async getBearerToken(): Promise<string | null> {
@@ -347,19 +373,16 @@ export class PuppeteerRenderer {
       return this.tokenData.access_token;
     }
     
-    // If we have a refresh token in config, try to get token from API
-    if (config.tokens?.refreshToken) {
-      try {
-        const response = await fetch('http://localhost:3000/api/token');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.token) {
-            return data.token;
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching token from API:', error);
+    // Try to read from token file
+    try {
+      const { readFile } = await import('fs/promises');
+      const tokenFileText = await readFile('.spotify_token.json', 'utf-8');
+      const tokenFile = JSON.parse(tokenFileText);
+      if (tokenFile.access_token && tokenFile.expires_at && Date.now() < tokenFile.expires_at) {
+        return tokenFile.access_token;
       }
+    } catch (error) {
+      // Token file doesn't exist or is invalid
     }
     
     return null;
@@ -371,24 +394,35 @@ export class PuppeteerRenderer {
     }
 
     const { writeFile } = await import('fs/promises');
-    config.tokens = config.tokens || {};
-    config.tokens.refreshToken = this.tokenData.refresh_token;
-    config.tokens.accessToken = this.tokenData.access_token;
     
-    await writeFile('config.json', JSON.stringify(config, null, 4));
-    console.log('Tokens saved to config.json');
+    // Write token to file for server to read
+    const tokenFile = {
+      access_token: this.tokenData.access_token,
+      expires_at: Date.now() + (this.tokenData.expires_in * 1000)
+    };
+    
+    await writeFile('.spotify_token.json', JSON.stringify(tokenFile, null, 2));
+    console.log('Access token saved to .spotify_token.json');
   }
 
   async close(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-      this.page = null;
+    if (this.authBrowser) {
+      await this.authBrowser.close();
+      this.authBrowser = null;
+      this.authPage = null;
+    }
+    if (this.appBrowser) {
+      await this.appBrowser.close();
+      this.appBrowser = null;
+      this.appPage = null;
     }
   }
 
-  getPage(): Page | null {
-    return this.page;
+  getAppPage(): Page | null {
+    return this.appPage;
+  }
+
+  getAuthPage(): Page | null {
+    return this.authPage;
   }
 }
-

@@ -11,15 +11,6 @@ interface Config {
     username?: string;
     password?: string;
   };
-  tokens?: {
-    refreshToken?: string;
-  };
-}
-
-interface TokenResponse {
-  access_token: string;
-  refresh_token?: string;
-  expires_in: number;
 }
 
 let config: Config;
@@ -33,69 +24,27 @@ async function loadConfig() {
 }
 await loadConfig();
 
-let spotifyAccessToken: string | null = null;
-let tokenExpiresAt = 0;
+interface TokenFile {
+  access_token: string;
+  expires_at: number;
+}
 
-async function refreshSpotifyToken() {
-  if (spotifyAccessToken && Date.now() < tokenExpiresAt) {
-    return spotifyAccessToken;
-  }
-
-  if (!config.tokens?.refreshToken) {
-    console.log("No refresh token found. Please visit http://localhost:3000/auth/login to authenticate.");
-    return null;
-  }
-
-  console.log("Refreshing Spotify token...");
-
-  const auth = Buffer.from(`${config.spotify.clientId}:${config.spotify.clientSecret}`).toString('base64');
-
+async function getAccessToken(): Promise<string | null> {
   try {
-    const response = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: {
-        "Authorization": `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: config.tokens.refreshToken
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Token Refresh Error: ${response.status} - ${errorText}`);
-      if (response.status === 400 || response.status === 401) {
-        console.log("Refresh token might be invalid. Please re-authenticate at http://localhost:3000/auth/login");
-      }
-      return null;
+    const tokenFile = await Bun.file(".spotify_token.json").json() as TokenFile;
+    
+    // Check if token is still valid (with 5 minute buffer)
+    if (tokenFile.expires_at && Date.now() < tokenFile.expires_at - 300000) {
+      return tokenFile.access_token;
     }
-
-    const data = await response.json() as TokenResponse;
-    spotifyAccessToken = data.access_token;
-    tokenExpiresAt = Date.now() + (data.expires_in * 1000) - 60000;
-
-    // Update refresh token if a new one is returned
-    if (data.refresh_token) {
-      config.tokens.refreshToken = data.refresh_token;
-      await saveConfig();
-    }
-
-    console.log("Spotify token refreshed successfully.");
-    return spotifyAccessToken;
-  } catch (error) {
-    console.error("Error refreshing Spotify token:", error);
+    
+    // Token expired or missing
+    return null;
+  } catch (e) {
+    // Token file doesn't exist or is invalid
     return null;
   }
 }
-
-async function saveConfig() {
-  await writeFile("config.json", JSON.stringify(config, null, 4));
-}
-
-// Initial attempt
-await refreshSpotifyToken();
 
 // Build frontend
 const buildResult = await Bun.build({
@@ -116,7 +65,7 @@ serve({
   routes: {
     // API: Get Token
     "/api/token": async () => {
-      const token = await refreshSpotifyToken();
+      const token = await getAccessToken();
       if (!token) {
         return new Response(JSON.stringify({
           error: "Authentication required",
@@ -148,40 +97,8 @@ serve({
 
     // Auth: Callback
     "/auth/callback": async (req) => {
-      const url = new URL(req.url);
-      const code = url.searchParams.get("code");
-      if (!code) {
-        return new Response("Missing code", { status: 400 });
-      }
-
-      const auth = Buffer.from(`${config.spotify.clientId}:${config.spotify.clientSecret}`).toString('base64');
-      const response = await fetch("https://accounts.spotify.com/api/token", {
-        method: "POST",
-        headers: {
-          "Authorization": `Basic ${auth}`,
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          code: code,
-          redirect_uri: config.spotify.redirectUri
-        })
-      });
-
-      if (!response.ok) {
-        return new Response(await response.text(), { status: 500 });
-      }
-
-      const data = await response.json() as TokenResponse;
-
-      // Save tokens
-      config.tokens = config.tokens || {};
-      config.tokens.refreshToken = data.refresh_token;
-      spotifyAccessToken = data.access_token;
-      tokenExpiresAt = Date.now() + (data.expires_in * 1000) - 60000;
-
-      await saveConfig();
-
+      // This endpoint is handled by Puppeteer renderer
+      // Just redirect to home
       return Response.redirect("/");
     },
 

@@ -11,9 +11,6 @@ Create a file named `config.json` in the root of the project with the following 
         "connectDeviceName": "Jukebox",
         "username": "YOUR_SPOTIFY_USERNAME",
         "password": "YOUR_SPOTIFY_PASSWORD"
-    },
-    "tokens": {
-        "refreshToken": ""
     }
 }
 ```
@@ -26,7 +23,8 @@ Create a file named `config.json` in the root of the project with the following 
 - **spotify.connectDeviceName**: The name this device will broadcast as via Spotify Connect.
 - **spotify.username**: (Optional) Your Spotify username or email. If provided, the authentication process will automatically fill in the login form.
 - **spotify.password**: (Optional) Your Spotify password. If provided along with username, the authentication process will automatically fill in and submit the login form.
-- **tokens.refreshToken**: Initially leave empty string `""`. This will be automatically populated after the first login.
 
 **Security Note**: The username and password are stored in plain text in the config file. Ensure `config.json` is in your `.gitignore` and not committed to version control.
+
+**Token Storage**: Access tokens are stored in `.spotify_token.json` (automatically created). This file should also be in your `.gitignore`.
 

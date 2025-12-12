@@ -21,8 +21,9 @@ export default function App() {
   const [isPaused, setPaused] = useState(false);
   const [isActive, setActive] = useState(false);
   const [currentTrack, setTrack] = useState<any>(null);
-  const [statusMessage, setStatusMessage] = useState("Initializing...");
+  const [statusMessage, setStatusMessage] = useState("Authenticating...");
   const [targetDeviceName, setTargetDeviceName] = useState<string>("");
+  const [isAuthenticating, setIsAuthenticating] = useState(true);
 
   const fetchToken = useCallback(async () => {
     try {
@@ -30,20 +31,27 @@ export default function App() {
       const data: TokenResponse = await res.json();
 
       if (data.error) {
-        if (data.authUrl) {
-          setStatusMessage(`Please authenticate: ${data.authUrl}`);
-          window.location.href = data.authUrl;
-        } else {
-          setStatusMessage(`Error: ${data.error}`);
-        }
+        setIsAuthenticating(true);
+        setStatusMessage("Waiting for authentication...");
+        // Poll for token every 2 seconds
+        setTimeout(() => {
+          fetchToken();
+        }, 2000);
         return;
       }
 
+      setIsAuthenticating(false);
       setToken(data.token);
       setTargetDeviceName(data.connectDeviceName);
+      setStatusMessage("Connected");
     } catch (err) {
       console.error(err);
-      setStatusMessage("Failed to fetch token.");
+      setIsAuthenticating(true);
+      setStatusMessage("Waiting for authentication...");
+      // Retry after 2 seconds
+      setTimeout(() => {
+        fetchToken();
+      }, 2000);
     }
   }, []);
 
@@ -120,11 +128,16 @@ export default function App() {
     }
   };
 
-  if (!token) {
+  if (!token || isAuthenticating) {
     return (
       <div style={styles.container}>
-        <h1>Jukebox</h1>
-        <p>{statusMessage}</p>
+        <div style={styles.loadingContent}>
+          <h1 style={styles.title}>Jukebox</h1>
+          <div style={styles.spinnerContainer}>
+            <div style={styles.spinner}></div>
+          </div>
+          <p style={styles.statusMessage}>{statusMessage}</p>
+        </div>
       </div>
     );
   }
@@ -177,6 +190,40 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'system-ui, sans-serif',
     background: '#121212',
     color: '#fff',
+  },
+  loadingContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '30px',
+  },
+  title: {
+    fontSize: '4rem',
+    margin: 0,
+    fontWeight: 'bold',
+    background: 'linear-gradient(90deg, #1DB954, #1ed760)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text',
+  },
+  spinnerContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spinner: {
+    width: '60px',
+    height: '60px',
+    border: '4px solid rgba(255, 255, 255, 0.1)',
+    borderTop: '4px solid #1DB954',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+  },
+  statusMessage: {
+    color: '#b3b3b3',
+    fontSize: '1.2rem',
+    margin: 0,
   },
   content: {
     textAlign: 'center',
