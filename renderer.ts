@@ -56,10 +56,10 @@ export class PuppeteerRenderer {
     
     // Get screen dimensions and set viewport to full screen
     const viewport = await this.appPage.evaluate(() => {
-      // @ts-ignore - window exists in browser context
+      const w = (globalThis as any).window || (globalThis as any);
       return {
-        width: window.screen.width,
-        height: window.screen.height
+        width: w.screen?.width || 1920,
+        height: w.screen?.height || 1080
       };
     });
     await this.appPage.setViewport({ width: viewport.width, height: viewport.height });
@@ -143,7 +143,7 @@ export class PuppeteerRenderer {
     if (loginFormFound && config.spotify.username && config.spotify.password) {
       console.log('Automating login with provided credentials...');
       try {
-        // Find and fill username field
+        // Step 1: Find and fill username/email field
         const usernameSelectors = [
           'input[type="text"][id*="username"]',
           'input[type="email"][id*="username"]',
@@ -173,7 +173,61 @@ export class PuppeteerRenderer {
           return null;
         }
 
-        // Find and fill password field
+        // Step 2: Click "Continue" button to proceed to password page
+        console.log('Clicking Continue button...');
+        let continueClicked = false;
+        
+        // Try to find Continue button by text content
+        const buttons = await this.authPage.$$('button');
+        for (const button of buttons) {
+          try {
+            const text = await this.authPage.evaluate(el => el.textContent?.trim().toLowerCase(), button);
+            if (text && (text.includes('continue') || text.includes('continuer'))) {
+              console.log(`Found Continue button: "${text}"`);
+              await button.click();
+              continueClicked = true;
+              break;
+            }
+          } catch (e) {
+            // Continue to next button
+          }
+        }
+
+        // If no Continue button found by text, try selectors
+        if (!continueClicked) {
+          const continueSelectors = [
+            'button[type="submit"]',
+            'button[type="button"]',
+            'button:not([disabled])'
+          ];
+          
+          for (const selector of continueSelectors) {
+            try {
+              const button = await this.authPage.$(selector);
+              if (button) {
+                await button.click();
+                continueClicked = true;
+                break;
+              }
+            } catch (e) {
+              // Try next selector
+            }
+          }
+        }
+
+        // If still no button found, try pressing Enter
+        if (!continueClicked) {
+          console.log('No Continue button found, pressing Enter...');
+          await this.authPage.keyboard.press('Enter');
+        }
+
+        // Wait for navigation to password page
+        console.log('Waiting for password page...');
+        await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for page to settle
+
+        // Step 3: Find and fill password field on the new page
+        console.log('Looking for password field...');
         const passwordSelectors = [
           'input[type="password"][id*="password"]',
           'input[type="password"][name*="password"]',
@@ -183,6 +237,7 @@ export class PuppeteerRenderer {
         let passwordFilled = false;
         for (const selector of passwordSelectors) {
           try {
+            await this.authPage.waitForSelector(selector, { timeout: 5000 });
             const passwordInput = await this.authPage.$(selector);
             if (passwordInput) {
               await passwordInput.click({ clickCount: 3 });
@@ -200,10 +255,29 @@ export class PuppeteerRenderer {
           return null;
         }
 
-        // Submit the form
-        if (usernameFilled && passwordFilled) {
-          console.log('Submitting login form...');
-          // Try to find and click submit button
+        // Step 4: Submit the password form
+        console.log('Submitting password form...');
+        let formSubmitted = false;
+        
+        // Try to find submit button by text
+        const submitButtons = await this.authPage.$$('button');
+        for (const button of submitButtons) {
+          try {
+            const text = await this.authPage.evaluate(el => el.textContent?.trim().toLowerCase(), button);
+            if (text && (text.includes('se connecter') || text.includes('log in') || text.includes('sign in') || text.includes('submit'))) {
+              console.log(`Found submit button: "${text}"`);
+              await button.click();
+              formSubmitted = true;
+              await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+              break;
+            }
+          } catch (e) {
+            // Continue to next button
+          }
+        }
+
+        // If no submit button found by text, try selectors
+        if (!formSubmitted) {
           const submitSelectors = [
             'button[type="submit"]',
             'button[id*="login"]',
@@ -211,7 +285,6 @@ export class PuppeteerRenderer {
             'input[type="submit"]'
           ];
 
-          let formSubmitted = false;
           for (const selector of submitSelectors) {
             try {
               const submitButton = await this.authPage.$(selector);
@@ -225,17 +298,18 @@ export class PuppeteerRenderer {
               // Try next selector
             }
           }
+        }
 
-          // If no submit button found, try pressing Enter
-          if (!formSubmitted) {
-            await this.authPage.keyboard.press('Enter');
-            await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
-          }
+        // If still no submit button found, try pressing Enter
+        if (!formSubmitted) {
+          await this.authPage.keyboard.press('Enter');
+          await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+        }
 
-          console.log('Login form submitted. Waiting for next step...');
-          
-          // Wait a bit for navigation
-          await new Promise(resolve => setTimeout(resolve, 2000));
+        console.log('Password form submitted. Waiting for next step...');
+        
+        // Wait a bit for navigation
+        await new Promise(resolve => setTimeout(resolve, 2000));
           
           // Check if we're on a consent/authorization screen
           const currentUrl = this.authPage.url();
