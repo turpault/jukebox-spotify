@@ -322,38 +322,73 @@ export class PuppeteerRenderer {
         const passwordFieldExists = await this.authPage.$('input[type="password"]').then(el => el !== null).catch(() => false);
         
         if (!passwordFieldExists) {
-          // Might be on PIN/2FA page, look for "use password" link
-          console.log('Password field not found. Looking for "use password" link...');
+          // Might be on PIN/2FA page, look for "use password" button
+          console.log('Password field not found. Looking for "use password" button...');
           
-          // Try to find link by text content (supports multiple languages)
-          const links = await this.authPage.$$('a, button');
           let passwordLinkClicked = false;
           
-          for (const link of links) {
+          // First, try to find by specific class selectors (more reliable)
+          const specificSelectors = [
+            'section[class*="EmailVerificationChallenge__FallbackFooter"] button',
+            'button[class*="Button"][class*="encore-text-body-medium-bold"]',
+            'button[data-encore-id="buttonTertiary"]'
+          ];
+          
+          for (const selector of specificSelectors) {
             try {
-              const text = await this.authPage.evaluate(el => el.textContent?.trim().toLowerCase(), link);
-              if (text && (
-                text.includes('mot de passe') || 
-                text.includes('password') || 
-                text.includes('se connecter avec') ||
-                text.includes('login with')
-              )) {
-                console.log(`Found password link: "${text}", clicking...`);
-                await link.click();
-                passwordLinkClicked = true;
-                
-                // Wait for navigation to password page
-                await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for page to settle
-                break;
+              const button = await this.authPage.$(selector);
+              if (button) {
+                const text = await this.authPage.evaluate(el => el.textContent?.trim(), button).catch(() => '');
+                if (text && (
+                  text.includes('mot de passe') || 
+                  text.includes('password') || 
+                  text.includes('Connexion avec')
+                )) {
+                  console.log(`Found password button by selector: "${text}", clicking...`);
+                  await button.click();
+                  passwordLinkClicked = true;
+                  
+                  // Wait for navigation to password page
+                  await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+                  await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for page to settle
+                  break;
+                }
               }
             } catch (e) {
-              // Continue to next link
+              // Try next selector
+            }
+          }
+          
+          // Fallback: Try to find by text content (supports multiple languages)
+          if (!passwordLinkClicked) {
+            const buttons = await this.authPage.$$('button');
+            for (const button of buttons) {
+              try {
+                const text = await this.authPage.evaluate(el => el.textContent?.trim().toLowerCase(), button);
+                if (text && (
+                  text.includes('mot de passe') || 
+                  text.includes('password') || 
+                  text.includes('se connecter avec') ||
+                  text.includes('login with') ||
+                  text.includes('connexion avec')
+                )) {
+                  console.log(`Found password button by text: "${text}", clicking...`);
+                  await button.click();
+                  passwordLinkClicked = true;
+                  
+                  // Wait for navigation to password page
+                  await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+                  await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for page to settle
+                  break;
+                }
+              } catch (e) {
+                // Continue to next button
+              }
             }
           }
           
           if (!passwordLinkClicked) {
-            console.log('Warning: Could not find "use password" link.');
+            console.log('Warning: Could not find "use password" button.');
             // Continue anyway, might already be on password page
           }
         }
