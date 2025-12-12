@@ -109,6 +109,94 @@ export class PuppeteerRenderer {
     });
   }
 
+  private async handleRecaptcha(): Promise<boolean> {
+    if (!this.authPage) return false;
+
+    try {
+      // Check if reCAPTCHA is present on the page by looking for:
+      // 1. reCAPTCHA iframes
+      // 2. Text indicating reCAPTCHA (French: "personne", English: "robot", etc.)
+      const recaptchaIframe = await this.authPage.$('iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"]').then(el => el !== null).catch(() => false);
+      
+      // Check for reCAPTCHA text on the page
+      const pageText = await this.authPage.evaluate(() => {
+        const w = (globalThis as any).window || (globalThis as any);
+        return w.document?.body?.textContent?.toLowerCase() || '';
+      }).catch(() => '');
+      
+      const hasRecaptchaText = pageText.includes('personne') || 
+                                pageText.includes('robot') || 
+                                pageText.includes('recaptcha') ||
+                                pageText.includes('vérifier');
+      
+      if (recaptchaIframe || hasRecaptchaText) {
+        console.log('reCAPTCHA detected. Waiting for user to complete verification...');
+        console.log('In dev mode, please complete the reCAPTCHA in the visible browser window.');
+        
+        // Wait for reCAPTCHA to be completed
+        // We'll wait for either:
+        // 1. Navigation away from the page (indicating reCAPTCHA passed)
+        // 2. The appearance of expected next page elements (password field, consent screen, etc.)
+        // 3. A timeout (5 minutes max)
+        
+        const startTime = Date.now();
+        const maxWaitTime = 300000; // 5 minutes
+        const initialUrl = this.authPage.url();
+        
+        while (Date.now() - startTime < maxWaitTime) {
+          const currentUrl = this.authPage.url();
+          
+          // Check if we've navigated to a different page (reCAPTCHA completed)
+          if (currentUrl !== initialUrl) {
+            console.log('Navigation detected - reCAPTCHA may be completed.');
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for page to settle
+            return true;
+          }
+          
+          // Check if password field or other expected elements appear (indicating we moved past reCAPTCHA)
+          const hasPasswordField = await this.authPage.$('input[type="password"]').then(el => el !== null).catch(() => false);
+          let hasConsentButton = false;
+          const buttons = await this.authPage.$$('button').catch(() => []);
+          for (const button of buttons) {
+            try {
+              const text = await this.authPage.evaluate(el => el.textContent?.trim().toLowerCase(), button).catch(() => '');
+              if (text && (text.includes('agree') || text.includes('authorize') || text.includes('accepter'))) {
+                hasConsentButton = true;
+                break;
+              }
+            } catch (e) {
+              // Continue
+            }
+          }
+          
+          if (hasPasswordField || hasConsentButton) {
+            console.log('Expected page elements found - reCAPTCHA appears to be completed.');
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for page to settle
+            return true;
+          }
+          
+          // Check if reCAPTCHA is still present
+          const stillHasRecaptcha = await this.authPage.$('iframe[src*="recaptcha"]').then(el => el !== null).catch(() => false);
+          if (!stillHasRecaptcha && !hasRecaptchaText) {
+            console.log('reCAPTCHA no longer detected - assuming completed.');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return true;
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Check every 2 seconds
+        }
+        
+        console.log('reCAPTCHA wait timeout. Continuing anyway...');
+        return false;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error checking for reCAPTCHA:', error);
+      return false;
+    }
+  }
+
   async authenticateSpotify(): Promise<TokenData | null> {
     if (!this.authPage) {
       throw new Error('Auth page not initialized. Call initializeAuthBrowser() first.');
@@ -221,12 +309,56 @@ export class PuppeteerRenderer {
           await this.authPage.keyboard.press('Enter');
         }
 
-        // Wait for navigation to password page
-        console.log('Waiting for password page...');
+        // Wait for navigation after clicking Continue
+        console.log('Waiting for next page...');
         await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for page to settle
 
-        // Step 3: Find and fill password field on the new page
+        // Check for and handle reCAPTCHA if present
+        await this.handleRecaptcha();
+
+        // Step 3: Check if we're on a PIN/2FA code page and click "use password" link if needed
+        console.log('Checking for PIN/2FA page...');
+        const passwordFieldExists = await this.authPage.$('input[type="password"]').then(el => el !== null).catch(() => false);
+        
+        if (!passwordFieldExists) {
+          // Might be on PIN/2FA page, look for "use password" link
+          console.log('Password field not found. Looking for "use password" link...');
+          
+          // Try to find link by text content (supports multiple languages)
+          const links = await this.authPage.$$('a, button');
+          let passwordLinkClicked = false;
+          
+          for (const link of links) {
+            try {
+              const text = await this.authPage.evaluate(el => el.textContent?.trim().toLowerCase(), link);
+              if (text && (
+                text.includes('mot de passe') || 
+                text.includes('password') || 
+                text.includes('se connecter avec') ||
+                text.includes('login with')
+              )) {
+                console.log(`Found password link: "${text}", clicking...`);
+                await link.click();
+                passwordLinkClicked = true;
+                
+                // Wait for navigation to password page
+                await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for page to settle
+                break;
+              }
+            } catch (e) {
+              // Continue to next link
+            }
+          }
+          
+          if (!passwordLinkClicked) {
+            console.log('Warning: Could not find "use password" link.');
+            // Continue anyway, might already be on password page
+          }
+        }
+
+        // Step 4: Find and fill password field on the password page
         console.log('Looking for password field...');
         const passwordSelectors = [
           'input[type="password"][id*="password"]',
@@ -255,7 +387,7 @@ export class PuppeteerRenderer {
           return null;
         }
 
-        // Step 4: Submit the password form
+        // Step 5: Submit the password form
         console.log('Submitting password form...');
         let formSubmitted = false;
         
@@ -309,33 +441,36 @@ export class PuppeteerRenderer {
         console.log('Password form submitted. Waiting for next step...');
         
         // Wait a bit for navigation
-        await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          // Check if we're on a consent/authorization screen
-          const currentUrl = this.authPage.url();
-          if (currentUrl.includes('accounts.spotify.com')) {
-            // Might be on consent screen - try to find and click "Agree" or "Authorize" button
-            try {
-              await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for page to settle
-              
-              // Try to find buttons and check their text
-              const buttons = await this.authPage.$$('button');
-              for (const button of buttons) {
-                try {
-                  const text = await this.authPage.evaluate(el => el.textContent?.trim(), button);
-                  if (text && (text.toLowerCase().includes('agree') || text.toLowerCase().includes('authorize') || text.toLowerCase().includes('ok'))) {
-                    console.log(`Found consent button: "${text}", clicking...`);
-                    await button.click();
-                    await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
-                    break;
-                  }
-                } catch (e) {
-                  // Continue to next button
+        await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for page to settle
+
+        // Check for and handle reCAPTCHA if present (can appear after password)
+        await this.handleRecaptcha();
+        
+        // Check if we're on a consent/authorization screen
+        const currentUrl = this.authPage.url();
+        if (currentUrl.includes('accounts.spotify.com')) {
+          // Might be on consent screen - try to find and click "Agree" or "Authorize" button
+          try {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for page to settle
+            
+            // Try to find buttons and check their text
+            const buttons = await this.authPage.$$('button');
+            for (const button of buttons) {
+              try {
+                const text = await this.authPage.evaluate(el => el.textContent?.trim(), button);
+                if (text && (text.toLowerCase().includes('agree') || text.toLowerCase().includes('authorize') || text.toLowerCase().includes('ok'))) {
+                  console.log(`Found consent button: "${text}", clicking...`);
+                  await button.click();
+                  await this.authPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+                  break;
                 }
+              } catch (e) {
+                // Continue to next button
               }
-            } catch (e) {
-              // Consent screen handling failed, continue
             }
+          } catch (e) {
+            // Consent screen handling failed, continue
           }
         }
       } catch (error) {
