@@ -58,8 +58,20 @@ async function startServer(): Promise<void> {
   console.log('Server is ready');
 }
 
+function isDevMode(): boolean {
+  // Check for NODE_ENV or if running with --watch flag
+  return process.env.NODE_ENV === 'development' || 
+         process.env.NODE_ENV !== 'production' ||
+         process.argv.includes('--watch');
+}
+
 async function main() {
   try {
+    const devMode = isDevMode();
+    if (devMode) {
+      console.log('Running in DEV mode - authentication window will be visible');
+    }
+
     // Load config to check if we need authentication
     let config: Config;
     try {
@@ -87,10 +99,11 @@ async function main() {
     const needsAuth = !existingToken;
 
     if (needsAuth) {
-      console.log('No valid token found. Starting authentication in headless browser...');
+      const authMode = devMode ? 'visible' : 'headless';
+      console.log(`No valid token found. Starting authentication in ${authMode} browser...`);
       
-      // Initialize headless auth browser
-      await renderer.initializeAuthBrowser();
+      // Initialize auth browser (visible in dev mode, headless in production)
+      await renderer.initializeAuthBrowser(devMode);
       
       // Perform authentication in headless browser
       const tokenData = await renderer.authenticateSpotify();

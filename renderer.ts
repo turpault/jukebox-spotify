@@ -55,10 +55,13 @@ export class PuppeteerRenderer {
     this.appPage = pages[0] || await this.appBrowser.newPage();
     
     // Get screen dimensions and set viewport to full screen
-    const viewport = await this.appPage.evaluate(() => ({
-      width: window.screen.width,
-      height: window.screen.height
-    }));
+    const viewport = await this.appPage.evaluate(() => {
+      // @ts-ignore - window exists in browser context
+      return {
+        width: window.screen.width,
+        height: window.screen.height
+      };
+    });
     await this.appPage.setViewport({ width: viewport.width, height: viewport.height });
     
     // Listen for console messages
@@ -78,12 +81,15 @@ export class PuppeteerRenderer {
     });
   }
 
-  async initializeAuthBrowser(): Promise<void> {
+  async initializeAuthBrowser(devMode: boolean = false): Promise<void> {
     await loadConfig();
     
-    console.log('Launching headless authentication browser...');
+    const isHeadless = !devMode;
+    console.log(`Launching authentication browser (${isHeadless ? 'headless' : 'visible'})...`);
+    
     this.authBrowser = await puppeteer.launch({
-      headless: true,
+      headless: isHeadless,
+      defaultViewport: devMode ? { width: 800, height: 600 } : null,
       args: [
         '--disable-blink-features=AutomationControlled'
       ]
@@ -281,6 +287,7 @@ export class PuppeteerRenderer {
       await this.authPage.waitForFunction(
         (expectedPath) => {
           try {
+            // @ts-ignore - window exists in browser context
             const url = new URL(window.location.href);
             return url.pathname === expectedPath;
           } catch {
@@ -347,7 +354,11 @@ export class PuppeteerRenderer {
         return null;
       }
 
-      const data = await response.json();
+      const data = await response.json() as {
+        access_token: string;
+        refresh_token: string;
+        expires_in: number;
+      };
       return {
         access_token: data.access_token,
         refresh_token: data.refresh_token,
