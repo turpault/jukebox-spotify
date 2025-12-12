@@ -1,0 +1,26 @@
+{
+  "name": "jukebox",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --watch server.ts",
+    "start": "bun index.ts",
+    "renderer": "bun index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/spotify-web-playback-sdk": "^0.1.19",
+    "@types/puppeteer": "^7.0.4"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "puppeteer": "^23.11.1"
+  }
+}
