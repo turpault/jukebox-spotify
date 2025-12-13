@@ -1,50 +1,7 @@
 import { serve } from "bun";
-import { writeFile } from "fs/promises";
 
-// Load configuration
-interface Config {
-  spotify: {
-    clientId: string;
-    clientSecret: string;
-    redirectUri: string;
-    connectDeviceName: string;
-    username?: string;
-    password?: string;
-  };
-}
-
-let config: Config;
-async function loadConfig() {
-  try {
-    config = await Bun.file("config.json").json();
-  } catch (e) {
-    console.error("Failed to load config.json.");
-    process.exit(1);
-  }
-}
-await loadConfig();
-
-interface TokenFile {
-  access_token: string;
-  expires_at: number;
-}
-
-async function getAccessToken(): Promise<string | null> {
-  try {
-    const tokenFile = await Bun.file(".spotify_token.json").json() as TokenFile;
-    
-    // Check if token is still valid (with 5 minute buffer)
-    if (tokenFile.expires_at && Date.now() < tokenFile.expires_at - 300000) {
-      return tokenFile.access_token;
-    }
-    
-    // Token expired or missing
-    return null;
-  } catch (e) {
-    // Token file doesn't exist or is invalid
-    return null;
-  }
-}
+// go-librespot API base URL
+const LIBRESPOT_API_URL = "http://localhost:3678";
 
 // Build frontend
 const buildResult = await Bun.build({
@@ -63,43 +20,34 @@ console.log(`Server starting on http://localhost:3000`);
 serve({
   port: 3000,
   routes: {
-    // API: Get Token
-    "/api/token": async () => {
-      const token = await getAccessToken();
-      if (!token) {
-        return new Response(JSON.stringify({
-          error: "Authentication required",
-          authUrl: "/auth/login"
-        }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" }
+    // Proxy API requests to go-librespot
+    "/api/*": async (req) => {
+      const url = new URL(req.url);
+      const path = url.pathname.replace("/api", "");
+      const targetUrl = `${LIBRESPOT_API_URL}${path}${url.search}`;
+      
+      try {
+        const response = await fetch(targetUrl, {
+          method: req.method,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: req.method !== "GET" && req.method !== "HEAD" ? await req.text() : undefined,
+        });
+        
+        const data = await response.text();
+        return new Response(data, {
+          status: response.status,
+          headers: {
+            "Content-Type": response.headers.get("Content-Type") || "application/json",
+          },
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: "Failed to connect to go-librespot" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
         });
       }
-      return new Response(JSON.stringify({
-        token,
-        connectDeviceName: config.spotify.connectDeviceName
-      }), {
-        headers: { "Content-Type": "application/json" }
-      });
-    },
-
-    // Auth: Login
-    "/auth/login": () => {
-      const scope = "streaming user-read-email user-read-private user-modify-playback-state user-read-playback-state";
-      const params = new URLSearchParams({
-        response_type: "code",
-        client_id: config.spotify.clientId,
-        scope: scope,
-        redirect_uri: config.spotify.redirectUri,
-      });
-      return Response.redirect(`https://accounts.spotify.com/authorize?${params.toString()}`);
-    },
-
-    // Auth: Callback
-    "/auth/callback": async (req) => {
-      // This endpoint is handled by Puppeteer renderer
-      // Just redirect to home
-      return Response.redirect("/");
     },
 
     // Serve bundled JS

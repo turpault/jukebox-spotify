@@ -1,134 +1,193 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
-declare global {
-  interface Window {
-    onSpotifyWebPlaybackSDKReady: () => void;
-    Spotify: any;
-  }
+interface TrackMetadata {
+  context_uri?: string;
+  uri?: string;
+  name?: string;
+  artist_names?: string[];
+  album_name?: string;
+  album_cover_url?: string;
+  position?: number;
+  duration?: number;
 }
 
-interface TokenResponse {
-  token: string;
-  connectDeviceName: string;
-  error?: string;
-  authUrl?: string;
+interface PlayerState {
+  isPaused: boolean;
+  isActive: boolean;
+  currentTrack: TrackMetadata | null;
+  position: number;
+  duration: number;
+  volume: number;
 }
+
+const LIBRESPOT_API_URL = "/api";
+const LIBRESPOT_WS_URL = "ws://localhost:3678/events";
 
 export default function App() {
-  const [token, setToken] = useState<string | null>(null);
-  const [deviceId, setDeviceId] = useState<string | null>(null);
-  const [player, setPlayer] = useState<any>(null);
-  const [isPaused, setPaused] = useState(false);
-  const [isActive, setActive] = useState(false);
-  const [currentTrack, setTrack] = useState<any>(null);
-  const [statusMessage, setStatusMessage] = useState("Authenticating...");
-  const [targetDeviceName, setTargetDeviceName] = useState<string>("");
-  const [isAuthenticating, setIsAuthenticating] = useState(true);
+  const [playerState, setPlayerState] = useState<PlayerState>({
+    isPaused: true,
+    isActive: false,
+    currentTrack: null,
+    position: 0,
+    duration: 0,
+    volume: 50,
+  });
+  const [statusMessage, setStatusMessage] = useState("Connecting to go-librespot...");
+  const [isConnected, setIsConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
 
-  const fetchToken = useCallback(async () => {
+  const connectWebSocket = () => {
     try {
-      const res = await fetch('/api/token');
-      const data: TokenResponse = await res.json();
+      const ws = new WebSocket(LIBRESPOT_WS_URL);
+      wsRef.current = ws;
 
-      if (data.error) {
-        setIsAuthenticating(true);
-        setStatusMessage("Waiting for authentication...");
-        // Poll for token every 2 seconds
-        setTimeout(() => {
-          fetchToken();
-        }, 2000);
-        return;
-      }
-
-      setIsAuthenticating(false);
-      setToken(data.token);
-      setTargetDeviceName(data.connectDeviceName);
-      setStatusMessage("Connected");
-    } catch (err) {
-      console.error(err);
-      setIsAuthenticating(true);
-      setStatusMessage("Waiting for authentication...");
-      // Retry after 2 seconds
-      setTimeout(() => {
-        fetchToken();
-      }, 2000);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchToken();
-  }, [fetchToken]);
-
-  useEffect(() => {
-    if (!token) return;
-
-    const script = document.createElement("script");
-    script.src = "https://sdk.scdn.co/spotify-player.js";
-    script.async = true;
-
-    document.body.appendChild(script);
-
-    window.onSpotifyWebPlaybackSDKReady = () => {
-      const player = new window.Spotify.Player({
-        name: targetDeviceName || 'Web Playback SDK',
-        getOAuthToken: (cb: (token: string) => void) => { cb(token); },
-        volume: 0.5
-      });
-
-      setPlayer(player);
-
-      player.addListener('ready', ({ device_id }: { device_id: string }) => {
-        console.log('Ready with Device ID', device_id);
-        setDeviceId(device_id);
-        setStatusMessage(`Device Ready: ${targetDeviceName} (${device_id})`);
-
-        // Attempt to transfer playback to this device
-        transferPlayback(token, device_id);
-      });
-
-      player.addListener('not_ready', ({ device_id }: { device_id: string }) => {
-        console.log('Device ID has gone offline', device_id);
-        setStatusMessage("Device offline");
-      });
-
-      player.addListener('player_state_changed', (state: any) => {
-        if (!state) {
-          return;
+      ws.onopen = () => {
+        console.log('WebSocket connected to go-librespot');
+        setIsConnected(true);
+        setStatusMessage("Connected to go-librespot");
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
         }
-        setTrack(state.track_window.current_track);
-        setPaused(state.paused);
+      };
 
-        player.getCurrentState().then((state: any) => {
-          (!state) ? setActive(false) : setActive(true)
-        });
-      });
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleWebSocketEvent(data);
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
 
-      player.connect();
-    };
-  }, [token, targetDeviceName]);
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setStatusMessage("Connection error");
+      };
 
-  const transferPlayback = async (token: string, deviceId: string) => {
-    console.log(`Transferring playback to ${deviceId}...`);
-    try {
-      await fetch('https://api.spotify.com/v1/me/player', {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          device_ids: [deviceId],
-          play: true,
-        }),
-      });
-      setStatusMessage("Playback transferred to this device.");
-    } catch (e) {
-      console.error("Error transferring playback:", e);
-      setStatusMessage("Failed to transfer playback.");
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        setIsConnected(false);
+        setStatusMessage("Reconnecting...");
+        // Reconnect after 2 seconds
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          connectWebSocket();
+        }, 2000);
+      };
+    } catch (error) {
+      console.error('Failed to connect WebSocket:', error);
+      setStatusMessage("Failed to connect");
+      // Retry connection
+      reconnectTimeoutRef.current = window.setTimeout(() => {
+        connectWebSocket();
+      }, 2000);
     }
   };
 
-  if (!token || isAuthenticating) {
+  const handleWebSocketEvent = (data: any) => {
+    switch (data.type) {
+      case 'active':
+        setPlayerState(prev => ({ ...prev, isActive: true }));
+        setStatusMessage("Player active");
+        break;
+      case 'inactive':
+        setPlayerState(prev => ({ ...prev, isActive: false }));
+        setStatusMessage("Player inactive");
+        break;
+      case 'metadata':
+        setPlayerState(prev => ({
+          ...prev,
+          currentTrack: {
+            context_uri: data.context_uri,
+            uri: data.uri,
+            name: data.name,
+            artist_names: data.artist_names,
+            album_name: data.album_name,
+            album_cover_url: data.album_cover_url,
+            position: data.position,
+            duration: data.duration,
+          },
+          position: data.position || 0,
+          duration: data.duration || 0,
+        }));
+        break;
+      case 'playing':
+        setPlayerState(prev => ({ ...prev, isPaused: false, isActive: true }));
+        break;
+      case 'paused':
+        setPlayerState(prev => ({ ...prev, isPaused: true }));
+        break;
+      case 'not_playing':
+        setPlayerState(prev => ({ ...prev, isPaused: true, isActive: false }));
+        break;
+      case 'stopped':
+        setPlayerState(prev => ({ ...prev, isActive: false, currentTrack: null }));
+        break;
+      case 'seek':
+        setPlayerState(prev => ({
+          ...prev,
+          position: data.position || 0,
+          duration: data.duration || 0,
+        }));
+        break;
+      case 'volume':
+        setPlayerState(prev => ({
+          ...prev,
+          volume: data.value || 0,
+        }));
+        break;
+    }
+  };
+
+  useEffect(() => {
+    connectWebSocket();
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
+    try {
+      const response = await fetch(`${LIBRESPOT_API_URL}${endpoint}`, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!response.ok) {
+        throw new Error(`API call failed: ${response.statusText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`Error calling ${endpoint}:`, error);
+      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const togglePlay = async () => {
+    if (playerState.isPaused) {
+      await apiCall('/player/play', 'POST');
+    } else {
+      await apiCall('/player/pause', 'POST');
+    }
+  };
+
+  const nextTrack = async () => {
+    await apiCall('/player/next', 'POST');
+  };
+
+  const previousTrack = async () => {
+    await apiCall('/player/previous', 'POST');
+  };
+
+  if (!isConnected) {
     return (
       <div style={styles.container}>
         <div style={styles.loadingContent}>
@@ -148,25 +207,28 @@ export default function App() {
         <h1>Jukebox</h1>
         <p style={styles.status}>{statusMessage}</p>
 
-        {isActive ? (
+        {playerState.isActive && playerState.currentTrack ? (
           <div style={styles.player}>
-            {currentTrack?.album?.images?.[0]?.url && (
+            {playerState.currentTrack.album_cover_url && (
               <img
-                src={currentTrack.album.images[0].url}
-                alt={currentTrack.name}
+                src={playerState.currentTrack.album_cover_url}
+                alt={playerState.currentTrack.name || 'Album cover'}
                 style={styles.albumArt}
               />
             )}
             <div style={styles.trackInfo}>
-              <h2>{currentTrack?.name}</h2>
-              <h3>{currentTrack?.artists?.[0]?.name}</h3>
+              <h2>{playerState.currentTrack.name || 'Unknown Track'}</h2>
+              <h3>{playerState.currentTrack.artist_names?.join(', ') || 'Unknown Artist'}</h3>
+              {playerState.currentTrack.album_name && (
+                <p style={{ fontSize: '0.9em', opacity: 0.7 }}>{playerState.currentTrack.album_name}</p>
+              )}
             </div>
             <div style={styles.controls}>
-              <button style={styles.button} onClick={() => player.previousTrack()}>⏮</button>
-              <button style={styles.button} onClick={() => player.togglePlay()}>
-                {isPaused ? "▶️" : "⏸"}
+              <button style={styles.button} onClick={previousTrack}>⏮</button>
+              <button style={styles.button} onClick={togglePlay}>
+                {playerState.isPaused ? "▶️" : "⏸"}
               </button>
-              <button style={styles.button} onClick={() => player.nextTrack()}>⏭</button>
+              <button style={styles.button} onClick={nextTrack}>⏭</button>
             </div>
           </div>
         ) : (

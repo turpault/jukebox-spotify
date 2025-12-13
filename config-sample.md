@@ -1,30 +1,11 @@
 # Configuration Sample
 
-Create a file named `config.json` in the root of the project with the following structure:
+This application connects to a local go-librespot instance running on port 3678.
 
-```json
-{
-    "spotify": {
-        "clientId": "YOUR_SPOTIFY_CLIENT_ID",
-        "clientSecret": "YOUR_SPOTIFY_CLIENT_SECRET",
-        "redirectUri": "http://localhost:3000/auth/callback",
-        "connectDeviceName": "Jukebox",
-        "username": "YOUR_SPOTIFY_USERNAME",
-        "password": "YOUR_SPOTIFY_PASSWORD"
-    }
-}
-```
+No configuration file is required. The application will automatically connect to `http://localhost:3678` for the REST API and `ws://localhost:3678/events` for WebSocket events.
 
-## Fields
+## Requirements
 
-- **spotify.clientId**: Your Spotify App Client ID (from Developer Dashboard).
-- **spotify.clientSecret**: Your Spotify App Client Secret.
-- **spotify.redirectUri**: The callback URL for OAuth flow. Must match what is set in the Spotify Dashboard. Default is `http://localhost:3000/auth/callback`.
-- **spotify.connectDeviceName**: The name this device will broadcast as via Spotify Connect.
-- **spotify.username**: (Optional) Your Spotify username or email. If provided, the authentication process will automatically fill in the login form.
-- **spotify.password**: (Optional) Your Spotify password. If provided along with username, the authentication process will automatically fill in and submit the login form.
-
-**Security Note**: The username and password are stored in plain text in the config file. Ensure `config.json` is in your `.gitignore` and not committed to version control.
-
-**Token Storage**: Access tokens are stored in `.spotify_token.json` (automatically created). This file should also be in your `.gitignore`.
+- go-librespot must be running and accessible on `http://localhost:3678`
+- The go-librespot instance should be properly configured with your Spotify credentials
 
