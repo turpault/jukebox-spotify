@@ -1,5 +1,6 @@
 import { serve } from "bun";
 import { readFile, writeFile } from "fs/promises";
+import indexHtml from "./public/index.html";
 
 // go-librespot API base URL
 const LIBRESPOT_API_URL = "http://localhost:3678";
@@ -54,20 +55,14 @@ serve({
     // Theme API routes
     "/api/theme": {
       GET: async () => {
-        const timestamp = new Date().toISOString();
-        console.log(`[Theme API] [${timestamp}] GET /api/theme`);
         try {
           const themeName = await getTheme();
-          console.log(`[Theme API] [${timestamp}] GET /api/theme - Current theme: ${themeName}`);
           return Response.json({ theme: themeName });
         } catch (error) {
-          console.error(`[Theme API] [${timestamp}] GET /api/theme - ERROR:`, error);
           return Response.json({ error: "Failed to get theme" }, { status: 500 });
         }
       },
       POST: async (req) => {
-        const timestamp = new Date().toISOString();
-        console.log(`[Theme API] [${timestamp}] POST /api/theme`);
         try {
           const body = await req.json() as { theme?: string };
           const themeName = body.theme;
@@ -78,13 +73,11 @@ serve({
           
           const success = await setTheme(themeName);
           if (success) {
-            console.log(`[Theme API] [${timestamp}] POST /api/theme - Theme set to: ${themeName}`);
             return Response.json({ theme: themeName });
           } else {
             return Response.json({ error: "Invalid theme name" }, { status: 400 });
           }
         } catch (error) {
-          console.error(`[Theme API] [${timestamp}] POST /api/theme - ERROR:`, error);
           return Response.json({ error: "Failed to set theme" }, { status: 500 });
         }
       },
@@ -141,27 +134,7 @@ serve({
         return Response.json({ error: "Failed to connect to go-librespot" }, { status: 503 });
       }
     },
+"/": indexHtml,
 
-    // Serve bundled JS
-    "/index.js": async () => {
-      const buildFile = Bun.file("./public/build/index.js");
-      // Rebuild on request to ensure latest changes
-      const rebuild = await Bun.build({
-        entrypoints: ['./src/index.tsx'],
-        outdir: './public/build',
-        naming: "[name].js",
-      });
-      if (rebuild.success) {
-        return new Response(buildFile);
-      }
-      return new Response("Build failed", { status: 500 });
-    },
-
-    // SPA Fallback (Serve index.html for all other routes)
-    "/*": () => {
-      return new Response(Bun.file("./public/index.html"), {
-        headers: { "Content-Type": "text/html" }
-      });
-    }
   },
 });
