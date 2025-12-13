@@ -1,4 +1,3 @@
-import { PuppeteerRenderer } from './renderer';
 import { spawn } from 'child_process';
 
 async function checkServerReady(maxAttempts = 30): Promise<boolean> {
@@ -51,29 +50,19 @@ async function main() {
     // Start the server
     await startServer();
 
-    // Initialize Puppeteer renderer
-    const renderer = new PuppeteerRenderer();
-
-    // Initialize app browser (fullscreen) and navigate to app
-    console.log('Initializing app browser...');
-    await renderer.initializeAppBrowser();
-    await renderer.navigateToApp();
-    console.log('App browser opened in fullscreen.');
-
-    console.log('Application is running. Browser window is open.');
+    console.log('Application is running.');
+    console.log('Open http://localhost:3000 in your browser.');
     console.log('Connecting to go-librespot on port 3678...');
     console.log('Press Ctrl+C to exit.');
 
     // Keep the process alive
     process.on('SIGINT', async () => {
       console.log('\nShutting down...');
-      await renderer.close();
       process.exit(0);
     });
 
     process.on('SIGTERM', async () => {
       console.log('\nShutting down...');
-      await renderer.close();
       process.exit(0);
     });
 
