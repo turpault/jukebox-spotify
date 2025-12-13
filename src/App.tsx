@@ -18,6 +18,10 @@ interface PlayerState {
   position: number;
   duration: number;
   volume: number;
+  volumeMax: number;
+  repeatContext: boolean;
+  repeatTrack: boolean;
+  shuffleContext: boolean;
 }
 
 const LIBRESPOT_API_URL = "http://localhost:3678";
@@ -50,6 +54,10 @@ export default function App() {
     position: 0,
     duration: 0,
     volume: 50,
+    volumeMax: 100,
+    repeatContext: false,
+    repeatTrack: false,
+    shuffleContext: false,
   });
   const [statusMessage, setStatusMessage] = useState("Connecting to go-librespot...");
   const [isConnected, setIsConnected] = useState(false);
@@ -112,6 +120,10 @@ export default function App() {
           isPaused: status.paused === true,
           isActive: !status.stopped && status.track !== null && status.track !== undefined,
           volume: status.volume !== undefined ? status.volume : prev.volume,
+          volumeMax: status.volume_steps !== undefined ? status.volume_steps : prev.volumeMax,
+          repeatContext: status.repeat_context === true,
+          repeatTrack: status.repeat_track === true,
+          shuffleContext: status.shuffle_context === true,
           // Note: position is not in status response, it comes from WebSocket events
         }));
       } else {
@@ -231,6 +243,25 @@ export default function App() {
         setPlayerState(prev => ({
           ...prev,
           volume: data.value || 0,
+          volumeMax: data.max || prev.volumeMax,
+        }));
+        break;
+      case 'repeat_context':
+        setPlayerState(prev => ({
+          ...prev,
+          repeatContext: data.value === true,
+        }));
+        break;
+      case 'repeat_track':
+        setPlayerState(prev => ({
+          ...prev,
+          repeatTrack: data.value === true,
+        }));
+        break;
+      case 'shuffle_context':
+        setPlayerState(prev => ({
+          ...prev,
+          shuffleContext: data.value === true,
         }));
         break;
       default:
@@ -270,6 +301,48 @@ export default function App() {
     await apiCall('/player/prev', 'POST');
   };
 
+  const setVolume = async (volume: number) => {
+    logWebSocket('User action: Set volume', { volume });
+    await apiCall('/player/volume', 'POST', { volume });
+  };
+
+  const seek = async (position: number) => {
+    logWebSocket('User action: Seek', { position });
+    await apiCall('/player/seek', 'POST', { position });
+  };
+
+  const toggleRepeat = async () => {
+    // Cycle through: off -> context -> track -> off
+    if (!playerState.repeatContext && !playerState.repeatTrack) {
+      // Off -> Context
+      logWebSocket('User action: Enable repeat context');
+      await apiCall('/player/repeat_context', 'POST', { repeat_context: true });
+    } else if (playerState.repeatContext && !playerState.repeatTrack) {
+      // Context -> Track
+      logWebSocket('User action: Switch to repeat track');
+      await apiCall('/player/repeat_context', 'POST', { repeat_context: false });
+      await apiCall('/player/repeat_track', 'POST', { repeat_track: true });
+    } else {
+      // Track -> Off
+      logWebSocket('User action: Disable repeat');
+      await apiCall('/player/repeat_track', 'POST', { repeat_track: false });
+    }
+  };
+
+  const toggleShuffle = async () => {
+    const newValue = !playerState.shuffleContext;
+    logWebSocket('User action: Toggle shuffle', { shuffle_context: newValue });
+    await apiCall('/player/shuffle_context', 'POST', { shuffle_context: newValue });
+  };
+
+  const formatTime = (ms: number): string => {
+    if (!ms || isNaN(ms)) return '0:00';
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
   if (!isConnected) {
     return (
       <div style={styles.container}>
@@ -306,12 +379,77 @@ export default function App() {
                 <p style={{ fontSize: '0.9em', opacity: 0.7 }}>{playerState.currentTrack.album_name}</p>
               )}
             </div>
+            {/* Progress bar / Seek control */}
+            <div style={styles.progressContainer}>
+              <span style={styles.timeLabel}>{formatTime(playerState.position)}</span>
+              <input
+                type="range"
+                min={0}
+                max={playerState.duration || 0}
+                value={playerState.position}
+                onChange={(e) => {
+                  const newPosition = parseInt(e.target.value);
+                  setPlayerState(prev => ({ ...prev, position: newPosition }));
+                }}
+                onMouseUp={(e) => {
+                  const target = e.target as HTMLInputElement;
+                  seek(parseInt(target.value));
+                }}
+                onTouchEnd={(e) => {
+                  const target = e.target as HTMLInputElement;
+                  seek(parseInt(target.value));
+                }}
+                style={styles.progressBar}
+              />
+              <span style={styles.timeLabel}>{formatTime(playerState.duration)}</span>
+            </div>
+
+            {/* Main playback controls */}
             <div style={styles.controls}>
-              <button style={styles.button} onClick={previousTrack}>⏮</button>
-              <button style={styles.button} onClick={togglePlay}>
+              <button 
+                style={{...styles.button, ...(playerState.shuffleContext ? styles.buttonActive : {})}}
+                onClick={toggleShuffle}
+                title="Shuffle"
+              >
+                🔀
+              </button>
+              <button style={styles.button} onClick={previousTrack} title="Previous">⏮</button>
+              <button style={styles.button} onClick={togglePlay} title={playerState.isPaused ? "Play" : "Pause"}>
                 {playerState.isPaused ? "▶️" : "⏸"}
               </button>
-              <button style={styles.button} onClick={nextTrack}>⏭</button>
+              <button style={styles.button} onClick={nextTrack} title="Next">⏭</button>
+              <button 
+                style={{...styles.button, ...(playerState.repeatTrack || playerState.repeatContext ? styles.buttonActive : {})}}
+                onClick={toggleRepeat}
+                title={playerState.repeatTrack ? "Repeat Track" : playerState.repeatContext ? "Repeat Context" : "Repeat Off"}
+              >
+                {playerState.repeatTrack ? "🔂" : "🔁"}
+              </button>
+            </div>
+
+            {/* Volume control */}
+            <div style={styles.volumeContainer}>
+              <span style={styles.volumeIcon}>🔊</span>
+              <input
+                type="range"
+                min={0}
+                max={playerState.volumeMax || 100}
+                value={playerState.volume}
+                onChange={(e) => {
+                  const newVolume = parseInt(e.target.value);
+                  setPlayerState(prev => ({ ...prev, volume: newVolume }));
+                }}
+                onMouseUp={(e) => {
+                  const target = e.target as HTMLInputElement;
+                  setVolume(parseInt(target.value));
+                }}
+                onTouchEnd={(e) => {
+                  const target = e.target as HTMLInputElement;
+                  setVolume(parseInt(target.value));
+                }}
+                style={styles.volumeSlider}
+              />
+              <span style={styles.volumeLabel}>{Math.round((playerState.volume / (playerState.volumeMax || 100)) * 100)}%</span>
             </div>
           </div>
         ) : (
@@ -405,6 +543,57 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
     fontSize: '2rem',
     cursor: 'pointer',
+    padding: '10px',
+    borderRadius: '50%',
+    transition: 'background-color 0.2s',
+  },
+  buttonActive: {
+    backgroundColor: 'rgba(29, 185, 84, 0.3)',
+  },
+  progressContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    width: '100%',
+    maxWidth: '500px',
+  },
+  progressBar: {
+    flex: 1,
+    height: '6px',
+    borderRadius: '3px',
+    background: '#333',
+    outline: 'none',
+    cursor: 'pointer',
+  },
+  timeLabel: {
+    fontSize: '0.9em',
+    color: '#b3b3b3',
+    minWidth: '45px',
+    textAlign: 'center',
+  },
+  volumeContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    width: '100%',
+    maxWidth: '300px',
+  },
+  volumeIcon: {
+    fontSize: '1.2rem',
+  },
+  volumeSlider: {
+    flex: 1,
+    height: '4px',
+    borderRadius: '2px',
+    background: '#333',
+    outline: 'none',
+    cursor: 'pointer',
+  },
+  volumeLabel: {
+    fontSize: '0.9em',
+    color: '#b3b3b3',
+    minWidth: '45px',
+    textAlign: 'center',
   },
   placeholder: {
     color: '#b3b3b3',
