@@ -1,7 +1,38 @@
 import { serve } from "bun";
+import { readFile, writeFile } from "fs/promises";
 
 // go-librespot API base URL
 const LIBRESPOT_API_URL = "http://localhost:3678";
+
+// Theme storage file
+const THEME_FILE = ".theme.json";
+
+// Available themes
+const AVAILABLE_THEMES = ["steampunk", "matrix"];
+
+async function getTheme(): Promise<string> {
+  try {
+    const data = await readFile(THEME_FILE, "utf-8");
+    const theme = JSON.parse(data);
+    return theme.name || "steampunk";
+  } catch (error) {
+    // Default theme if file doesn't exist
+    return "steampunk";
+  }
+}
+
+async function setTheme(themeName: string): Promise<boolean> {
+  if (!AVAILABLE_THEMES.includes(themeName)) {
+    return false;
+  }
+  try {
+    await writeFile(THEME_FILE, JSON.stringify({ name: themeName }, null, 2));
+    return true;
+  } catch (error) {
+    console.error("Failed to save theme:", error);
+    return false;
+  }
+}
 
 // Build frontend
 const buildResult = await Bun.build({
@@ -20,6 +51,45 @@ console.log(`Server starting on http://localhost:3000`);
 serve({
   port: 3000,
   routes: {
+    // Theme API routes
+    "/api/theme": {
+      GET: async () => {
+        const timestamp = new Date().toISOString();
+        console.log(`[Theme API] [${timestamp}] GET /api/theme`);
+        try {
+          const themeName = await getTheme();
+          console.log(`[Theme API] [${timestamp}] GET /api/theme - Current theme: ${themeName}`);
+          return Response.json({ theme: themeName });
+        } catch (error) {
+          console.error(`[Theme API] [${timestamp}] GET /api/theme - ERROR:`, error);
+          return Response.json({ error: "Failed to get theme" }, { status: 500 });
+        }
+      },
+      POST: async (req) => {
+        const timestamp = new Date().toISOString();
+        console.log(`[Theme API] [${timestamp}] POST /api/theme`);
+        try {
+          const body = await req.json() as { theme?: string };
+          const themeName = body.theme;
+          
+          if (!themeName) {
+            return Response.json({ error: "Theme name is required" }, { status: 400 });
+          }
+          
+          const success = await setTheme(themeName);
+          if (success) {
+            console.log(`[Theme API] [${timestamp}] POST /api/theme - Theme set to: ${themeName}`);
+            return Response.json({ theme: themeName });
+          } else {
+            return Response.json({ error: "Invalid theme name" }, { status: 400 });
+          }
+        } catch (error) {
+          console.error(`[Theme API] [${timestamp}] POST /api/theme - ERROR:`, error);
+          return Response.json({ error: "Failed to set theme" }, { status: 500 });
+        }
+      },
+    },
+
     // Proxy API requests to go-librespot
     "/api/*": async (req) => {
       const url = new URL(req.url);
@@ -68,10 +138,7 @@ serve({
         });
       } catch (error) {
         console.error(`[Server Proxy] [${timestamp}] ${method} ${path} - ERROR:`, error);
-        return new Response(JSON.stringify({ error: "Failed to connect to go-librespot" }), {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        });
+        return Response.json({ error: "Failed to connect to go-librespot" }, { status: 503 });
       }
     },
 

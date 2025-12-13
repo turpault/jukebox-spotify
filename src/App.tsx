@@ -27,6 +27,88 @@ interface PlayerState {
 const LIBRESPOT_API_URL = "http://localhost:3678";
 const LIBRESPOT_WS_URL = "ws://localhost:3678/events";
 
+// Theme system
+interface Theme {
+  name: string;
+  colors: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    background: string;
+    surface: string;
+    text: string;
+    textSecondary: string;
+    border: string;
+    active: string;
+    progress: string;
+    progressTrack: string;
+  };
+  fonts: {
+    primary: string;
+    title: string;
+  };
+  effects: {
+    shadow: string;
+    borderRadius: string;
+  };
+}
+
+const steampunkTheme: Theme = {
+  name: 'Steampunk 1930s',
+  colors: {
+    primary: '#D4AF37',      // Brass/Gold
+    secondary: '#B8860B',    // Darker gold
+    accent: '#CD853F',       // Peru/bronze
+    background: 'linear-gradient(135deg, #2C1810 0%, #1A0F08 50%, #0D0603 100%)', // Dark wood gradient
+    surface: 'rgba(61, 40, 23, 0.8)', // Dark brown with transparency
+    text: '#F4E4BC',         // Warm cream
+    textSecondary: '#D4AF37', // Brass
+    border: '#8B6914',       // Aged brass
+    active: '#D4AF37',       // Brass for active states
+    progress: '#D4AF37',     // Brass progress
+    progressTrack: '#3D2817', // Dark brown track
+  },
+  fonts: {
+    primary: '"Cinzel", "Playfair Display", "Times New Roman", serif',
+    title: '"Cinzel", "Playfair Display", "Times New Roman", serif',
+  },
+  effects: {
+    shadow: '0 8px 32px rgba(0, 0, 0, 0.8), 0 0 20px rgba(212, 175, 55, 0.3)',
+    borderRadius: '8px',
+  },
+};
+
+const matrixTheme: Theme = {
+  name: 'Matrix',
+  colors: {
+    primary: '#00FF41',      // Matrix green
+    secondary: '#00CC33',    // Darker green
+    accent: '#00FF88',       // Bright green
+    background: '#000000',   // Pure black
+    surface: 'rgba(0, 0, 0, 0.9)', // Black with slight transparency
+    text: '#00FF41',         // Matrix green
+    textSecondary: '#00CC33', // Darker green
+    border: '#003311',       // Dark green border
+    active: '#00FF41',       // Matrix green for active states
+    progress: '#00FF41',     // Matrix green progress
+    progressTrack: '#001100', // Very dark green track
+  },
+  fonts: {
+    primary: '"Courier New", "Monaco", "Consolas", monospace',
+    title: '"Courier New", "Monaco", "Consolas", monospace',
+  },
+  effects: {
+    shadow: '0 0 20px rgba(0, 255, 65, 0.5), 0 0 40px rgba(0, 255, 65, 0.3)',
+    borderRadius: '0px',
+  },
+};
+
+// Theme registry
+const themes: Record<string, Theme> = {
+  steampunk: steampunkTheme,
+  matrix: matrixTheme,
+};
+
 // Logging utilities
 const logREST = (method: string, endpoint: string, data?: any, response?: any, error?: any) => {
   const timestamp = new Date().toISOString();
@@ -47,6 +129,9 @@ const logWebSocket = (event: string, data?: any, error?: any) => {
 };
 
 export default function App() {
+  const [theme, setTheme] = useState<Theme>(steampunkTheme);
+  const [themeName, setThemeName] = useState<string>('steampunk');
+  
   const [playerState, setPlayerState] = useState<PlayerState>({
     isPaused: true,
     isActive: false,
@@ -64,8 +149,9 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
-  const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
-    const url = `${LIBRESPOT_API_URL}${endpoint}`;
+  const apiCall = async (endpoint: string, method: string = 'GET', body?: any, useLocalApi: boolean = false) => {
+    const baseUrl = useLocalApi ? '' : LIBRESPOT_API_URL;
+    const url = `${baseUrl}${endpoint}`;
     logREST(method, endpoint, body);
     
     try {
@@ -154,9 +240,15 @@ export default function App() {
 
       ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          logWebSocket('Message received', data);
-          handleWebSocketEvent(data);
+          const message = JSON.parse(event.data);
+          logWebSocket('Message received', message);
+          // Handle nested structure: { type: "...", data: {...} }
+          if (message.type && message.data) {
+            handleWebSocketEvent({ ...message.data, type: message.type });
+          } else {
+            // Fallback for flat structure
+            handleWebSocketEvent(message);
+          }
         } catch (error) {
           logWebSocket('Error parsing message', { raw: event.data }, error);
         }
@@ -202,6 +294,10 @@ export default function App() {
       case 'inactive':
         setPlayerState(prev => ({ ...prev, isActive: false }));
         setStatusMessage("Player inactive");
+        break;
+      case 'will_play':
+        // Track is about to play - prepare UI for upcoming track
+        // Metadata will follow, so we can optionally show a loading state here
         break;
       case 'metadata':
         setPlayerState(prev => ({
@@ -269,7 +365,39 @@ export default function App() {
     }
   };
 
+  const fetchTheme = useCallback(async () => {
+    try {
+      const response = await apiCall('/api/theme', 'GET', undefined, true);
+      if (response && response.theme) {
+        const themeKey = response.theme;
+        if (themes[themeKey]) {
+          setTheme(themes[themeKey]);
+          setThemeName(themeKey);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch theme:', error);
+    }
+  }, []);
+
+  const updateTheme = useCallback(async (newThemeName: string) => {
+    try {
+      const response = await apiCall('/api/theme', 'POST', { theme: newThemeName }, true);
+      if (response && response.theme) {
+        const themeKey = response.theme;
+        if (themes[themeKey]) {
+          setTheme(themes[themeKey]);
+          setThemeName(themeKey);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update theme:', error);
+    }
+  }, []);
+
   useEffect(() => {
+    // Fetch theme on page load
+    fetchTheme();
     // Fetch initial playback status on page load
     fetchPlaybackStatus();
     // Connect WebSocket for real-time updates
@@ -282,7 +410,7 @@ export default function App() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [fetchPlaybackStatus]);
+  }, [fetchPlaybackStatus, fetchTheme]);
 
   const togglePlay = async () => {
     // Use /player/playpause endpoint as per API spec
@@ -343,9 +471,37 @@ export default function App() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const styles = createStyles(theme);
+
   if (!isConnected) {
     return (
       <div style={styles.container}>
+        {/* Theme selector */}
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          zIndex: 1000,
+        }}>
+          <select
+            value={themeName}
+            onChange={(e) => updateTheme(e.target.value)}
+            style={{
+              background: theme.colors.surface,
+              color: theme.colors.text,
+              border: `2px solid ${theme.colors.border}`,
+              borderRadius: theme.effects.borderRadius,
+              padding: '8px 12px',
+              fontFamily: theme.fonts.primary,
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            <option value="steampunk">Steampunk 1930s</option>
+            <option value="matrix">Matrix</option>
+          </select>
+        </div>
         <div style={styles.loadingContent}>
           <h1 style={styles.title}>Jukebox</h1>
           <div style={styles.spinnerContainer}>
@@ -359,9 +515,39 @@ export default function App() {
 
   return (
     <div style={styles.container}>
+      {/* Theme selector */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        right: '20px',
+        zIndex: 1000,
+      }}>
+        <select
+          value={themeName}
+          onChange={(e) => updateTheme(e.target.value)}
+          style={{
+            background: theme.colors.surface,
+            color: theme.colors.text,
+            border: `2px solid ${theme.colors.border}`,
+            borderRadius: theme.effects.borderRadius,
+            padding: '8px 12px',
+            fontFamily: theme.fonts.primary,
+            fontSize: '0.9rem',
+            cursor: 'pointer',
+            outline: 'none',
+          }}
+        >
+          <option value="steampunk">Steampunk 1930s</option>
+          <option value="matrix">Matrix</option>
+        </select>
+      </div>
       <div style={styles.content}>
-        <h1>Jukebox</h1>
-        <p style={styles.status}>{statusMessage}</p>
+        {!isConnected && (
+          <>
+            <h1 style={{...styles.title, fontSize: '3rem', marginBottom: '10px'}}>Jukebox</h1>
+            <p style={styles.status}>{statusMessage}</p>
+          </>
+        )}
 
         {playerState.isActive && playerState.currentTrack ? (
           <div style={styles.player}>
@@ -373,10 +559,30 @@ export default function App() {
               />
             )}
             <div style={styles.trackInfo}>
-              <h2>{playerState.currentTrack.name || 'Unknown Track'}</h2>
-              <h3>{playerState.currentTrack.artist_names?.join(', ') || 'Unknown Artist'}</h3>
+              <h2 style={{ 
+                color: theme.colors.text, 
+                fontFamily: theme.fonts.title,
+                margin: '10px 0',
+                fontSize: '1.8rem',
+                textShadow: theme.name === 'Matrix' 
+                  ? `0 0 10px ${theme.colors.primary}, 0 0 20px ${theme.colors.primary}`
+                  : `0 2px 10px rgba(212, 175, 55, 0.3)`
+              }}>{playerState.currentTrack.name || 'Unknown Track'}</h2>
+              <h3 style={{ 
+                color: theme.colors.textSecondary, 
+                fontFamily: theme.fonts.primary,
+                margin: '5px 0',
+                fontSize: '1.2rem',
+                fontWeight: 'normal'
+              }}>{playerState.currentTrack.artist_names?.join(', ') || 'Unknown Artist'}</h3>
               {playerState.currentTrack.album_name && (
-                <p style={{ fontSize: '0.9em', opacity: 0.7 }}>{playerState.currentTrack.album_name}</p>
+                <p style={{ 
+                  fontSize: '0.9em', 
+                  color: theme.colors.textSecondary,
+                  opacity: 0.8,
+                  fontFamily: theme.fonts.primary,
+                  margin: '5px 0'
+                }}>{playerState.currentTrack.album_name}</p>
               )}
             </div>
             {/* Progress bar / Seek control */}
@@ -410,18 +616,60 @@ export default function App() {
                 style={{...styles.button, ...(playerState.shuffleContext ? styles.buttonActive : {})}}
                 onClick={toggleShuffle}
                 title="Shuffle"
+                onMouseEnter={(e) => {
+                  if (!playerState.shuffleContext) {
+                    Object.assign(e.currentTarget.style, styles.buttonHover);
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!playerState.shuffleContext) {
+                    Object.assign(e.currentTarget.style, styles.button);
+                  }
+                }}
               >
                 🔀
               </button>
-              <button style={styles.button} onClick={previousTrack} title="Previous">⏮</button>
-              <button style={styles.button} onClick={togglePlay} title={playerState.isPaused ? "Play" : "Pause"}>
+              <button 
+                style={styles.button} 
+                onClick={previousTrack} 
+                title="Previous"
+                onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.buttonHover)}
+                onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.button)}
+              >
+                ⏮
+              </button>
+              <button 
+                style={styles.button} 
+                onClick={togglePlay} 
+                title={playerState.isPaused ? "Play" : "Pause"}
+                onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.buttonHover)}
+                onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.button)}
+              >
                 {playerState.isPaused ? "▶️" : "⏸"}
               </button>
-              <button style={styles.button} onClick={nextTrack} title="Next">⏭</button>
+              <button 
+                style={styles.button} 
+                onClick={nextTrack} 
+                title="Next"
+                onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.buttonHover)}
+                onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.button)}
+              >
+                ⏭
+              </button>
               <button 
                 style={{...styles.button, ...(playerState.repeatTrack || playerState.repeatContext ? styles.buttonActive : {})}}
                 onClick={toggleRepeat}
                 title={playerState.repeatTrack ? "Repeat Track" : playerState.repeatContext ? "Repeat Context" : "Repeat Off"}
+                onMouseEnter={(e) => {
+                  if (!playerState.repeatTrack && !playerState.repeatContext) {
+                    Object.assign(e.currentTarget.style, styles.buttonHover);
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!playerState.repeatTrack && !playerState.repeatContext) {
+                    Object.assign(e.currentTarget.style, styles.button);
+                  }
+                }}
               >
                 {playerState.repeatTrack ? "🔂" : "🔁"}
               </button>
@@ -463,16 +711,19 @@ export default function App() {
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+// Create styles function that uses theme
+const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
   container: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     height: '100%',
-    fontFamily: 'system-ui, sans-serif',
-    background: '#121212',
-    color: '#fff',
+    fontFamily: theme.fonts.primary,
+    background: theme.colors.background,
+    color: theme.colors.text,
+    position: 'relative',
+    overflow: 'hidden',
   },
   loadingContent: {
     display: 'flex',
@@ -485,10 +736,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '4rem',
     margin: 0,
     fontWeight: 'bold',
-    background: 'linear-gradient(90deg, #1DB954, #1ed760)',
+    fontFamily: theme.fonts.title,
+    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.secondary} 100%)`,
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
     backgroundClip: 'text',
+    textShadow: theme.name === 'Matrix' 
+      ? `0 0 20px ${theme.colors.primary}, 0 0 40px ${theme.colors.primary}`
+      : `0 0 30px rgba(212, 175, 55, 0.5)`,
+    letterSpacing: theme.name === 'Matrix' ? '0.2em' : '0.1em',
   },
   spinnerContainer: {
     display: 'flex',
@@ -498,25 +754,34 @@ const styles: Record<string, React.CSSProperties> = {
   spinner: {
     width: '60px',
     height: '60px',
-    border: '4px solid rgba(255, 255, 255, 0.1)',
-    borderTop: '4px solid #1DB954',
+    border: `4px solid ${theme.colors.border}`,
+    borderTop: `4px solid ${theme.colors.primary}`,
     borderRadius: '50%',
     animation: 'spin 1s linear infinite',
+    boxShadow: theme.name === 'Matrix'
+      ? `0 0 20px ${theme.colors.primary}`
+      : `0 0 20px rgba(212, 175, 55, 0.4)`,
   },
   statusMessage: {
-    color: '#b3b3b3',
+    color: theme.colors.textSecondary,
     fontSize: '1.2rem',
     margin: 0,
+    fontFamily: theme.fonts.primary,
   },
   content: {
     textAlign: 'center',
     maxWidth: '800px',
     width: '100%',
     padding: '20px',
+    background: theme.colors.surface,
+    borderRadius: theme.effects.borderRadius,
+    border: `2px solid ${theme.colors.border}`,
+    boxShadow: theme.effects.shadow,
   },
   status: {
-    color: '#b3b3b3',
+    color: theme.colors.textSecondary,
     marginBottom: '20px',
+    fontFamily: theme.fonts.primary,
   },
   player: {
     display: 'flex',
@@ -527,8 +792,9 @@ const styles: Record<string, React.CSSProperties> = {
   albumArt: {
     width: '300px',
     height: '300px',
-    borderRadius: '8px',
-    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+    borderRadius: theme.effects.borderRadius,
+    boxShadow: theme.effects.shadow,
+    border: `3px solid ${theme.colors.border}`,
   },
   trackInfo: {
     marginBottom: '20px',
@@ -536,19 +802,37 @@ const styles: Record<string, React.CSSProperties> = {
   controls: {
     display: 'flex',
     gap: '20px',
+    alignItems: 'center',
   },
   button: {
-    background: 'none',
-    border: 'none',
-    color: '#fff',
+    background: `linear-gradient(135deg, ${theme.colors.surface} 0%, ${theme.colors.border} 100%)`,
+    border: `2px solid ${theme.colors.border}`,
+    color: theme.colors.text,
     fontSize: '2rem',
     cursor: 'pointer',
-    padding: '10px',
+    padding: '12px',
     borderRadius: '50%',
-    transition: 'background-color 0.2s',
+    transition: 'all 0.3s ease',
+    boxShadow: `0 4px 15px rgba(0, 0, 0, 0.5)`,
+    minWidth: '60px',
+    minHeight: '60px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonHover: {
+    background: `linear-gradient(135deg, ${theme.colors.border} 0%, ${theme.colors.primary} 100%)`,
+    boxShadow: theme.name === 'Matrix'
+      ? `0 0 20px ${theme.colors.primary}, 0 4px 15px rgba(0, 0, 0, 0.5)`
+      : `0 0 20px rgba(212, 175, 55, 0.5), 0 4px 15px rgba(0, 0, 0, 0.5)`,
+    transform: 'scale(1.05)',
   },
   buttonActive: {
-    backgroundColor: 'rgba(29, 185, 84, 0.3)',
+    background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.secondary} 100%)`,
+    boxShadow: theme.name === 'Matrix'
+      ? `0 0 25px ${theme.colors.primary}, 0 4px 15px rgba(0, 0, 0, 0.5)`
+      : `0 0 25px rgba(212, 175, 55, 0.6), 0 4px 15px rgba(0, 0, 0, 0.5)`,
+    border: `2px solid ${theme.colors.primary}`,
   },
   progressContainer: {
     display: 'flex',
@@ -559,17 +843,20 @@ const styles: Record<string, React.CSSProperties> = {
   },
   progressBar: {
     flex: 1,
-    height: '6px',
-    borderRadius: '3px',
-    background: '#333',
+    height: '8px',
+    borderRadius: '4px',
+    background: theme.colors.progressTrack,
     outline: 'none',
     cursor: 'pointer',
+    border: `1px solid ${theme.colors.border}`,
   },
   timeLabel: {
     fontSize: '0.9em',
-    color: '#b3b3b3',
+    color: theme.colors.textSecondary,
     minWidth: '45px',
     textAlign: 'center',
+    fontFamily: theme.fonts.primary,
+    fontVariantNumeric: 'tabular-nums',
   },
   volumeContainer: {
     display: 'flex',
@@ -580,22 +867,27 @@ const styles: Record<string, React.CSSProperties> = {
   },
   volumeIcon: {
     fontSize: '1.2rem',
+    color: theme.colors.textSecondary,
   },
   volumeSlider: {
     flex: 1,
-    height: '4px',
-    borderRadius: '2px',
-    background: '#333',
+    height: '6px',
+    borderRadius: '3px',
+    background: theme.colors.progressTrack,
     outline: 'none',
     cursor: 'pointer',
+    border: `1px solid ${theme.colors.border}`,
   },
   volumeLabel: {
     fontSize: '0.9em',
-    color: '#b3b3b3',
+    color: theme.colors.textSecondary,
     minWidth: '45px',
     textAlign: 'center',
+    fontFamily: theme.fonts.primary,
+    fontVariantNumeric: 'tabular-nums',
   },
   placeholder: {
-    color: '#b3b3b3',
+    color: theme.colors.textSecondary,
+    fontFamily: theme.fonts.primary,
   }
-};
+});
