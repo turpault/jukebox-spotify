@@ -92,45 +92,28 @@ export default function App() {
   const fetchPlaybackStatus = useCallback(async () => {
     logWebSocket('Fetching playback status');
     try {
-      // Try common endpoints for player status
-      const status = await apiCall('/player') || await apiCall('/player/status') || await apiCall('/status');
+      // Use /status endpoint as per API spec
+      const status = await apiCall('/status');
       
       if (status) {
         logWebSocket('Playback status received', status);
-        // Update player state with current status
-        if (status.metadata || status.track) {
-          const metadata = status.metadata || status.track;
-          setPlayerState(prev => ({
-            ...prev,
-            currentTrack: {
-              context_uri: metadata.context_uri,
-              uri: metadata.uri,
-              name: metadata.name,
-              artist_names: metadata.artist_names || (metadata.artists ? metadata.artists.map((a: any) => a.name) : []),
-              album_name: metadata.album_name || metadata.album?.name,
-              album_cover_url: metadata.album_cover_url || metadata.album?.images?.[0]?.url,
-              position: status.position || metadata.position || 0,
-              duration: status.duration || metadata.duration || 0,
-            },
-            position: status.position || metadata.position || 0,
-            duration: status.duration || metadata.duration || 0,
-            isPaused: status.paused !== undefined ? status.paused : (status.is_playing === false),
-            isActive: status.is_playing !== undefined ? status.is_playing : !status.paused,
-            volume: status.volume?.value || status.volume || prev.volume,
-          }));
-        } else {
-          // If we have position/duration but no metadata, update those
-          if (status.position !== undefined || status.duration !== undefined) {
-            setPlayerState(prev => ({
-              ...prev,
-              position: status.position ?? prev.position,
-              duration: status.duration ?? prev.duration,
-              isPaused: status.paused !== undefined ? status.paused : prev.isPaused,
-              isActive: status.is_playing !== undefined ? status.is_playing : prev.isActive,
-              volume: status.volume?.value || status.volume || prev.volume,
-            }));
-          }
-        }
+        // Update player state with current status according to API spec
+        // Status response: paused, stopped, buffering, volume, volume_steps, track
+        setPlayerState(prev => ({
+          ...prev,
+          currentTrack: status.track ? {
+            uri: status.track.uri,
+            name: status.track.name,
+            artist_names: status.track.artist_names || [],
+            album_name: status.track.album_name,
+            album_cover_url: status.track.album_cover_url,
+            duration: status.track.duration,
+          } : null,
+          isPaused: status.paused === true,
+          isActive: !status.stopped && status.track !== null && status.track !== undefined,
+          volume: status.volume !== undefined ? status.volume : prev.volume,
+          // Note: position is not in status response, it comes from WebSocket events
+        }));
       } else {
         logWebSocket('No playback status available');
       }
@@ -271,13 +254,9 @@ export default function App() {
   }, [fetchPlaybackStatus]);
 
   const togglePlay = async () => {
-    if (playerState.isPaused) {
-      logWebSocket('User action: Play');
-      await apiCall('/player/play', 'POST');
-    } else {
-      logWebSocket('User action: Pause');
-      await apiCall('/player/pause', 'POST');
-    }
+    // Use /player/playpause endpoint as per API spec
+    logWebSocket('User action: Toggle play/pause');
+    await apiCall('/player/playpause', 'POST');
   };
 
   const nextTrack = async () => {
@@ -286,8 +265,9 @@ export default function App() {
   };
 
   const previousTrack = async () => {
+    // Use /player/prev endpoint as per API spec (not /player/previous)
     logWebSocket('User action: Previous track');
-    await apiCall('/player/previous', 'POST');
+    await apiCall('/player/prev', 'POST');
   };
 
   if (!isConnected) {
