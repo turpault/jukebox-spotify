@@ -1,75 +1,56 @@
-import { spawn } from 'child_process';
+import { serve } from "bun";
+import { readFile, writeFile } from "fs/promises";
+import indexHtml from "./public/index.html";
 
-async function checkServerReady(maxAttempts = 30): Promise<boolean> {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const response = await fetch('http://localhost:3000');
-      if (response.ok) {
-        return true;
-      }
-    } catch (error) {
-      // Server not ready yet
-    }
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-  return false;
-}
+// Theme storage file
+const THEME_FILE = ".theme.json";
 
-async function startServer(): Promise<void> {
-  console.log('Starting server...');
-  const serverProcess = spawn('bun', ['server.ts'], {
-    stdio: 'pipe',
-    detached: false
-  });
-
-  // Pipe server output
-  serverProcess.stdout?.on('data', (data) => {
-    process.stdout.write(`[Server] ${data}`);
-  });
-  serverProcess.stderr?.on('data', (data) => {
-    process.stderr.write(`[Server] ${data}`);
-  });
-
-  serverProcess.on('error', (error) => {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  });
-
-  // Wait for server to be ready
-  const ready = await checkServerReady();
-  if (!ready) {
-    console.error('Server failed to start within timeout');
-    serverProcess.kill();
-    process.exit(1);
-  }
-  console.log('Server is ready');
-}
-
-async function main() {
+async function getTheme(): Promise<string> {
   try {
-    // Start the server
-    await startServer();
-
-    console.log('Application is running.');
-    console.log('Open http://localhost:3000 in your browser.');
-    console.log('Connecting to go-librespot on port 3678...');
-    console.log('Press Ctrl+C to exit.');
-
-    // Keep the process alive
-    process.on('SIGINT', async () => {
-      console.log('\nShutting down...');
-      process.exit(0);
-    });
-
-    process.on('SIGTERM', async () => {
-      console.log('\nShutting down...');
-      process.exit(0);
-    });
-
+    const data = await readFile(THEME_FILE, "utf-8");
+    const theme = JSON.parse(data);
+    return theme.name || "steampunk";
   } catch (error) {
-    console.error('Error:', error);
-    process.exit(1);
+    // Default theme if file doesn't exist
+    return "steampunk";
   }
 }
 
-main();
+async function setTheme(themeName: string): Promise<void> {
+  await writeFile(THEME_FILE, JSON.stringify({ name: themeName }, null, 2));
+}
+
+
+serve({
+  port: 3000,
+  routes: {
+    // Theme API routes
+    "/api/theme": {
+      GET: async () => {
+        try {
+          const themeName = await getTheme();
+          return Response.json({ theme: themeName });
+        } catch (error) {
+          return Response.json({ error: "Failed to get theme" }, { status: 500 });
+        }
+      },
+      POST: async (req) => {
+        try {
+          const body = await req.json() as { theme?: string };
+          const themeName = body.theme;
+          
+          if (!themeName) {
+            return Response.json({ error: "Theme name is required" }, { status: 400 });
+          }
+          
+          await setTheme(themeName);
+          return Response.json({ theme: themeName });
+        } catch (error) {
+          return Response.json({ error: "Failed to set theme" }, { status: 500 });
+        }
+      },
+    },
+    "/": indexHtml,    
+  },
+  development: true,
+});
