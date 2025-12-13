@@ -381,17 +381,21 @@ export default function App() {
   }, []);
 
   const updateTheme = useCallback(async (newThemeName: string) => {
+    // Update theme immediately for responsive UI
+    if (themes[newThemeName]) {
+      setTheme(themes[newThemeName]);
+      setThemeName(newThemeName);
+    }
+    
+    // Persist to server in the background
     try {
       const response = await apiCall('/api/theme', 'POST', { theme: newThemeName }, true);
-      if (response && response.theme) {
-        const themeKey = response.theme;
-        if (themes[themeKey]) {
-          setTheme(themes[themeKey]);
-          setThemeName(themeKey);
-        }
+      if (!response || !response.theme) {
+        console.warn('Theme update may not have been persisted:', response);
       }
     } catch (error) {
-      console.error('Failed to update theme:', error);
+      console.error('Failed to persist theme to server:', error);
+      // Theme is already updated in UI, so we just log the error
     }
   }, []);
 
