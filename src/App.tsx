@@ -20,8 +20,27 @@ interface PlayerState {
   volume: number;
 }
 
-const LIBRESPOT_API_URL = "/api";
+const LIBRESPOT_API_URL = "http://localhost:3678";
 const LIBRESPOT_WS_URL = "ws://localhost:3678/events";
+
+// Logging utilities
+const logREST = (method: string, endpoint: string, data?: any, response?: any, error?: any) => {
+  const timestamp = new Date().toISOString();
+  if (error) {
+    console.error(`[REST API] [${timestamp}] ${method} ${endpoint} - ERROR:`, error);
+  } else {
+    console.log(`[REST API] [${timestamp}] ${method} ${endpoint}`, data ? `Request: ${JSON.stringify(data)}` : '', response ? `Response: ${JSON.stringify(response)}` : '');
+  }
+};
+
+const logWebSocket = (event: string, data?: any, error?: any) => {
+  const timestamp = new Date().toISOString();
+  if (error) {
+    console.error(`[WebSocket] [${timestamp}] ${event} - ERROR:`, error);
+  } else {
+    console.log(`[WebSocket] [${timestamp}] ${event}`, data ? JSON.stringify(data, null, 2) : '');
+  }
+};
 
 export default function App() {
   const [playerState, setPlayerState] = useState<PlayerState>({
@@ -38,31 +57,46 @@ export default function App() {
   const reconnectTimeoutRef = useRef<number | null>(null);
 
   const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
+    const url = `${LIBRESPOT_API_URL}${endpoint}`;
+    logREST(method, endpoint, body);
+    
     try {
-      const response = await fetch(`${LIBRESPOT_API_URL}${endpoint}`, {
+      const startTime = Date.now();
+      const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
         body: body ? JSON.stringify(body) : undefined,
       });
+      
+      const duration = Date.now() - startTime;
+      const responseData = await response.json().catch(() => null);
+      
       if (!response.ok) {
-        throw new Error(`API call failed: ${response.statusText}`);
+        const error = new Error(`API call failed: ${response.status} ${response.statusText}`);
+        logREST(method, endpoint, body, null, { status: response.status, statusText: response.statusText, duration: `${duration}ms` });
+        throw error;
       }
-      return await response.json();
+      
+      logREST(method, endpoint, body, responseData, null);
+      console.log(`[REST API] Response time: ${duration}ms`);
+      return responseData;
     } catch (error) {
-      console.error(`Error calling ${endpoint}:`, error);
+      logREST(method, endpoint, body, null, error);
       setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return null;
     }
   };
 
   const fetchPlaybackStatus = useCallback(async () => {
+    logWebSocket('Fetching playback status');
     try {
       // Try common endpoints for player status
       const status = await apiCall('/player') || await apiCall('/player/status') || await apiCall('/status');
       
       if (status) {
+        logWebSocket('Playback status received', status);
         // Update player state with current status
         if (status.metadata || status.track) {
           const metadata = status.metadata || status.track;
@@ -97,19 +131,22 @@ export default function App() {
             }));
           }
         }
+      } else {
+        logWebSocket('No playback status available');
       }
     } catch (error) {
-      console.error('Error fetching playback status:', error);
+      logWebSocket('Error fetching playback status', null, error);
     }
   }, []);
 
   const connectWebSocket = () => {
+    logWebSocket('Attempting to connect', { url: LIBRESPOT_WS_URL });
     try {
       const ws = new WebSocket(LIBRESPOT_WS_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('WebSocket connected to go-librespot');
+        logWebSocket('Connection opened', { readyState: ws.readyState });
         setIsConnected(true);
         setStatusMessage("Connected to go-librespot");
         if (reconnectTimeoutRef.current) {
@@ -123,37 +160,45 @@ export default function App() {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          logWebSocket('Message received', data);
           handleWebSocketEvent(data);
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          logWebSocket('Error parsing message', { raw: event.data }, error);
         }
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        logWebSocket('Connection error', null, error);
         setStatusMessage("Connection error");
       };
 
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
+      ws.onclose = (event) => {
+        logWebSocket('Connection closed', { 
+          code: event.code, 
+          reason: event.reason, 
+          wasClean: event.wasClean 
+        });
         setIsConnected(false);
         setStatusMessage("Reconnecting...");
         // Reconnect after 2 seconds
         reconnectTimeoutRef.current = window.setTimeout(() => {
+          logWebSocket('Attempting to reconnect');
           connectWebSocket();
         }, 2000);
       };
     } catch (error) {
-      console.error('Failed to connect WebSocket:', error);
+      logWebSocket('Failed to create WebSocket connection', null, error);
       setStatusMessage("Failed to connect");
       // Retry connection
       reconnectTimeoutRef.current = window.setTimeout(() => {
+        logWebSocket('Retrying WebSocket connection');
         connectWebSocket();
       }, 2000);
     }
   };
 
   const handleWebSocketEvent = (data: any) => {
+    logWebSocket(`Event: ${data.type}`, data);
     switch (data.type) {
       case 'active':
         setPlayerState(prev => ({ ...prev, isActive: true }));
@@ -205,6 +250,8 @@ export default function App() {
           volume: data.value || 0,
         }));
         break;
+      default:
+        logWebSocket(`Unknown event type: ${data.type}`, data);
     }
   };
 
@@ -225,17 +272,21 @@ export default function App() {
 
   const togglePlay = async () => {
     if (playerState.isPaused) {
+      logWebSocket('User action: Play');
       await apiCall('/player/play', 'POST');
     } else {
+      logWebSocket('User action: Pause');
       await apiCall('/player/pause', 'POST');
     }
   };
 
   const nextTrack = async () => {
+    logWebSocket('User action: Next track');
     await apiCall('/player/next', 'POST');
   };
 
   const previousTrack = async () => {
+    logWebSocket('User action: Previous track');
     await apiCall('/player/previous', 'POST');
   };
 

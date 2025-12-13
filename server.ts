@@ -25,17 +25,41 @@ serve({
       const url = new URL(req.url);
       const path = url.pathname.replace("/api", "");
       const targetUrl = `${LIBRESPOT_API_URL}${path}${url.search}`;
+      const timestamp = new Date().toISOString();
+      const method = req.method;
+      
+      // Read request body if present
+      let requestBody: string | undefined;
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        requestBody = await req.text();
+      }
+      
+      console.log(`[Server Proxy] [${timestamp}] ${method} ${path}${url.search}`);
+      if (requestBody) {
+        console.log(`[Server Proxy] Request body:`, requestBody);
+      }
       
       try {
+        const startTime = Date.now();
         const response = await fetch(targetUrl, {
           method: req.method,
           headers: {
             "Content-Type": "application/json",
           },
-          body: req.method !== "GET" && req.method !== "HEAD" ? await req.text() : undefined,
+          body: requestBody,
         });
         
+        const duration = Date.now() - startTime;
         const data = await response.text();
+        
+        console.log(`[Server Proxy] [${timestamp}] ${method} ${path} - ${response.status} ${response.statusText} (${duration}ms)`);
+        
+        // Log response body (truncate if too long)
+        if (data) {
+          const preview = data.length > 500 ? data.substring(0, 500) + '...' : data;
+          console.log(`[Server Proxy] Response body:`, preview);
+        }
+        
         return new Response(data, {
           status: response.status,
           headers: {
@@ -43,6 +67,7 @@ serve({
           },
         });
       } catch (error) {
+        console.error(`[Server Proxy] [${timestamp}] ${method} ${path} - ERROR:`, error);
         return new Response(JSON.stringify({ error: "Failed to connect to go-librespot" }), {
           status: 503,
           headers: { "Content-Type": "application/json" },
