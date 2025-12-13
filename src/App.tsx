@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 
 interface TrackMetadata {
   context_uri?: string;
@@ -37,6 +37,72 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
+  const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
+    try {
+      const response = await fetch(`${LIBRESPOT_API_URL}${endpoint}`, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!response.ok) {
+        throw new Error(`API call failed: ${response.statusText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`Error calling ${endpoint}:`, error);
+      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return null;
+    }
+  };
+
+  const fetchPlaybackStatus = useCallback(async () => {
+    try {
+      // Try common endpoints for player status
+      const status = await apiCall('/player') || await apiCall('/player/status') || await apiCall('/status');
+      
+      if (status) {
+        // Update player state with current status
+        if (status.metadata || status.track) {
+          const metadata = status.metadata || status.track;
+          setPlayerState(prev => ({
+            ...prev,
+            currentTrack: {
+              context_uri: metadata.context_uri,
+              uri: metadata.uri,
+              name: metadata.name,
+              artist_names: metadata.artist_names || (metadata.artists ? metadata.artists.map((a: any) => a.name) : []),
+              album_name: metadata.album_name || metadata.album?.name,
+              album_cover_url: metadata.album_cover_url || metadata.album?.images?.[0]?.url,
+              position: status.position || metadata.position || 0,
+              duration: status.duration || metadata.duration || 0,
+            },
+            position: status.position || metadata.position || 0,
+            duration: status.duration || metadata.duration || 0,
+            isPaused: status.paused !== undefined ? status.paused : (status.is_playing === false),
+            isActive: status.is_playing !== undefined ? status.is_playing : !status.paused,
+            volume: status.volume?.value || status.volume || prev.volume,
+          }));
+        } else {
+          // If we have position/duration but no metadata, update those
+          if (status.position !== undefined || status.duration !== undefined) {
+            setPlayerState(prev => ({
+              ...prev,
+              position: status.position ?? prev.position,
+              duration: status.duration ?? prev.duration,
+              isPaused: status.paused !== undefined ? status.paused : prev.isPaused,
+              isActive: status.is_playing !== undefined ? status.is_playing : prev.isActive,
+              volume: status.volume?.value || status.volume || prev.volume,
+            }));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching playback status:', error);
+    }
+  }, []);
+
   const connectWebSocket = () => {
     try {
       const ws = new WebSocket(LIBRESPOT_WS_URL);
@@ -50,6 +116,8 @@ export default function App() {
           clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = null;
         }
+        // Fetch current playback status when WebSocket connects
+        fetchPlaybackStatus();
       };
 
       ws.onmessage = (event) => {
@@ -141,6 +209,9 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Fetch initial playback status on page load
+    fetchPlaybackStatus();
+    // Connect WebSocket for real-time updates
     connectWebSocket();
     return () => {
       if (wsRef.current) {
@@ -150,26 +221,7 @@ export default function App() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, []);
-
-  const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
-    try {
-      const response = await fetch(`${LIBRESPOT_API_URL}${endpoint}`, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if (!response.ok) {
-        throw new Error(`API call failed: ${response.statusText}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error(`Error calling ${endpoint}:`, error);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
+  }, [fetchPlaybackStatus]);
 
   const togglePlay = async () => {
     if (playerState.isPaused) {
