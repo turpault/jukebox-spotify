@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 
 interface TrackMetadata {
   context_uri?: string;
@@ -430,6 +430,23 @@ export default function App() {
     }
   }, [playerState.isPaused, playerState.isActive, playerState.duration]);
 
+  // Update document body background when theme changes
+  useEffect(() => {
+    // Extract solid color from theme background (handle gradients)
+    const bgColor = theme.colors.background.includes('gradient') 
+      ? '#000000' // Default to black for gradients
+      : theme.colors.background;
+    
+    document.body.style.background = bgColor;
+    document.body.style.color = theme.colors.text;
+    
+    return () => {
+      // Reset on unmount
+      document.body.style.background = '';
+      document.body.style.color = '';
+    };
+  }, [theme]);
+
   const togglePlay = async () => {
     // Use /player/playpause endpoint as per API spec
     logWebSocket('User action: Toggle play/pause');
@@ -489,7 +506,7 @@ export default function App() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const styles = createStyles(theme);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   if (!isConnected) {
     return (
