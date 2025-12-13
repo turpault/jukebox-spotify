@@ -412,6 +412,24 @@ export default function App() {
     };
   }, [fetchPlaybackStatus, fetchTheme]);
 
+  // Update position during playback
+  useEffect(() => {
+    if (!playerState.isPaused && playerState.isActive && playerState.duration > 0) {
+      const interval = setInterval(() => {
+        setPlayerState(prev => {
+          const newPosition = prev.position + 1000; // Increment by 1 second (1000ms)
+          // Stop at duration
+          if (newPosition >= prev.duration) {
+            return { ...prev, position: prev.duration };
+          }
+          return { ...prev, position: newPosition };
+        });
+      }, 1000); // Update every second
+
+      return () => clearInterval(interval);
+    }
+  }, [playerState.isPaused, playerState.isActive, playerState.duration]);
+
   const togglePlay = async () => {
     // Use /player/playpause endpoint as per API spec
     logWebSocket('User action: Toggle play/pause');
