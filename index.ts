@@ -69,7 +69,23 @@ const server = serve({
     ...createSpotifyRoutes(),
     ...createLibrespotRoutes(),
     "/manage": manageHtml,
-    "/": indexHtml,    
+    "/": indexHtml,
+    // Serve bundled client code for iOS 9 compatibility
+    "/dist/index.js": async () => {
+      try {
+        const file = Bun.file("./public/dist/index.js");
+        if (await file.exists()) {
+          return new Response(file, {
+            headers: {
+              "Content-Type": "application/javascript",
+            },
+          });
+        }
+      } catch (e) {
+        // Bundle doesn't exist, fall through
+      }
+      return new Response("Bundle not found. Run 'bun run build:client' first.", { status: 404 });
+    },
   },
   development: true,
 });

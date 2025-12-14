@@ -1576,10 +1576,11 @@ const createStyles = (theme: Theme, isMobile: boolean): Record<string, React.CSS
     color: theme.colors.text,
     position: 'relative',
     overflow: 'hidden',
-    paddingTop: isMobile ? 'env(safe-area-inset-top)' : '0',
-    paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : '0',
-    paddingLeft: isMobile ? 'env(safe-area-inset-left)' : '0',
-    paddingRight: isMobile ? 'env(safe-area-inset-right)' : '0',
+    // iOS 9 doesn't support env() - use fallback values
+    paddingTop: isMobile ? '0' : '0', // Use 0 for iOS 9, env() only works on iOS 11+
+    paddingBottom: isMobile ? '0' : '0',
+    paddingLeft: isMobile ? '0' : '0',
+    paddingRight: isMobile ? '0' : '0',
   },
   loadingContent: {
     display: 'flex',

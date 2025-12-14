@@ -86,7 +86,22 @@ bun run dev
 bun start
 ```
 
+**Building for iOS 9 compatibility:**
+```bash
+bun run build:client
+```
+
 The application will be available at `http://localhost:3000`.
+
+### iOS 9 Compatibility
+
+For iOS 9 devices (iPad/iPhone running iOS 9), you need to build the client bundle first:
+
+```bash
+bun run build:client
+```
+
+This creates a bundled, ES5-compatible version of the app that works on iOS 9 Safari. The app will automatically detect if ES6 modules are supported and use the appropriate version.
 
 ## Features
 

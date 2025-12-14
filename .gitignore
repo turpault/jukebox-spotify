@@ -1,6 +1,7 @@
 node_modules
 dist
 public/build
+public/dist
 .DS_Store
 config.json
 cache/

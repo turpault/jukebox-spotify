@@ -8,8 +8,10 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "build": "bun run build-client.ts",
     "dev": "NODE_ENV=development bun --watch index.ts",
-    "start": "bun index.ts"
+    "start": "bun index.ts",
+    "build:client": "bun run build-client.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
