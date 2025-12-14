@@ -1,6 +1,6 @@
-import { serve } from "bun";
 import { readFile, writeFile } from "fs/promises";
 import indexHtml from "./public/index.html";
+import { serve } from "bun";
 
 // Theme storage file
 const THEME_FILE = ".theme.json";

@@ -1,11 +1,15 @@
 {
   "name": "jukebox",
+  "version": "1.0.0",
+  "engines": {
+    "bun": ">=1.1.30"
+  },
   "module": "index.ts",
+  "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --watch index.ts",
-    "start": "bun index.ts",
-    "renderer": "bun index.ts"
+    "dev": "NODE_ENV=development bun --watch index.ts",
+    "start": "bun index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -13,7 +17,7 @@
     "@types/react-dom": "^19.2.3"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "react": "^19.2.3",
