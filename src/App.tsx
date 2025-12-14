@@ -31,8 +31,9 @@ interface SpotifyIdWithArtwork {
   imageUrl: string;
 }
 
-const LIBRESPOT_API_URL = "http://localhost:3678";
-const LIBRESPOT_WS_URL = "ws://localhost:3678/events";
+// All API calls are now proxied through the server
+const LIBRESPOT_API_URL = ""; // Use relative URLs to proxy through server
+const LIBRESPOT_WS_URL = "ws://localhost:3000/api/ws";
 
 // Theme system
 interface Theme {
