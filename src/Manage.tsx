@@ -276,6 +276,7 @@ export default function Manage() {
         saveTheme(themeName);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeName]);
 
   // Auto-save view when it changes
@@ -283,6 +284,7 @@ export default function Manage() {
     if (!isInitialLoad.current) {
       saveView(viewName);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewName]);
 
   // Auto-save hotkeys when they change
@@ -290,6 +292,7 @@ export default function Manage() {
     if (hotkeys && !isInitialLoad.current) {
       saveHotkeys(hotkeys);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hotkeys]);
 
   // Update document body background when theme changes
