@@ -487,14 +487,132 @@ export default function App() {
     }
   }, [fetchTheme, fetchHotkeys, fetchSpotifyIds]);
 
+  const fetchTracksFromSpotifyId = useCallback(async (spotifyId: string): Promise<string[]> => {
+    try {
+      // Get Spotify token from server
+      const tokenResponse = await apiCall('/api/spotify/token', 'GET', undefined, true);
+      if (!tokenResponse || !tokenResponse.token) {
+        throw new Error('Failed to get Spotify token');
+      }
+      const token = tokenResponse.token;
+
+      // Parse Spotify URI: spotify:track:xxx or spotify:album:xxx
+      const parts = spotifyId.split(':');
+      if (parts.length < 3 || parts[0] !== 'spotify') {
+        throw new Error('Invalid Spotify URI');
+      }
+
+      const type = parts[1]; // track, album, playlist, artist
+      const spotifyIdValue = parts[2]; // The actual ID
+
+      if (type === 'track') {
+        // Single track, return as-is
+        return [spotifyId];
+      }
+
+      let tracks: string[] = [];
+      
+      if (type === 'album') {
+        // Fetch album tracks
+        let offset = 0;
+        const limit = 50;
+        while (true) {
+          const response = await fetch(`https://api.spotify.com/v1/albums/${spotifyIdValue}/tracks?limit=${limit}&offset=${offset}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Spotify API error: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          tracks.push(...data.items.map((item: any) => item.uri));
+          
+          if (!data.next) {
+            break;
+          }
+          offset += limit;
+        }
+      } else if (type === 'playlist') {
+        // Fetch playlist tracks
+        let offset = 0;
+        const limit = 50;
+        while (true) {
+          const response = await fetch(`https://api.spotify.com/v1/playlists/${spotifyIdValue}/tracks?limit=${limit}&offset=${offset}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Spotify API error: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          tracks.push(...data.items
+            .filter((item: any) => item.track && item.track.uri)
+            .map((item: any) => item.track.uri));
+          
+          if (!data.next) {
+            break;
+          }
+          offset += limit;
+        }
+      } else if (type === 'artist') {
+        // Fetch artist's top tracks
+        const response = await fetch(`https://api.spotify.com/v1/artists/${spotifyIdValue}/top-tracks?market=US`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Spotify API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        tracks = data.tracks.map((track: any) => track.uri);
+      } else {
+        throw new Error(`Unsupported type: ${type}`);
+      }
+
+      return tracks;
+    } catch (error) {
+      console.error('Failed to fetch tracks from Spotify ID:', error);
+      throw error;
+    }
+  }, []);
+
   const addToQueue = useCallback(async (spotifyId: string) => {
     try {
-      await apiCall('/player/add_to_queue', 'POST', { uri: spotifyId });
-      const itemName = spotifyIds.find((s: SpotifyIdWithArtwork) => s.id === spotifyId)?.name || spotifyId;
-      setStatusMessage(`Added to queue: ${itemName}`);
+      const item = spotifyIds.find((s: SpotifyIdWithArtwork) => s.id === spotifyId);
+      const itemName = item?.name || spotifyId;
+      
+      // Fetch all tracks (handles single tracks, albums, playlists, artists)
+      const tracks = await fetchTracksFromSpotifyId(spotifyId);
+      
+      if (tracks.length === 0) {
+        setStatusMessage(`No tracks found for ${itemName}`);
+        return;
+      }
+
+      // Enqueue tracks sequentially
+      setStatusMessage(`Adding ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue...`);
+      
+      for (let i = 0; i < tracks.length; i++) {
+        await apiCall('/player/add_to_queue', 'POST', { uri: tracks[i] });
+        // Small delay between requests to avoid overwhelming the API
+        if (i < tracks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      setStatusMessage(`Added ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue: ${itemName}`);
       setTimeout(() => {
         setStatusMessage((prev) => {
-          if (prev.startsWith('Added to queue:')) {
+          if (prev.startsWith('Added')) {
             return '';
           }
           return prev;
@@ -504,7 +622,7 @@ export default function App() {
       console.error('Failed to add to queue:', error);
       setStatusMessage(`Error adding to queue: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [spotifyIds]);
+  }, [spotifyIds, fetchTracksFromSpotifyId]);
 
   const updateTheme = useCallback(async (newThemeName: string) => {
     // Update theme immediately for responsive UI
