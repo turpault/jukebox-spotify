@@ -849,16 +849,26 @@ export function createSpotifyRoutes() {
       },
     },
     // Image to base64 API - fetches image and returns as base64 data URI
-    "/api/image": {
+    // Route parameter is base64-encoded image URL
+    "/api/image/:base64EncodedImageUrl": {
       GET: async (req: Request) => {
-        const url = new URL(req.url);
-        const imageUrl = url.searchParams.get('url');
-        const traceContext = traceApiStart('GET', '/api/image', 'inbound', { hasUrl: !!imageUrl });
-        
-        if (!imageUrl) {
-          traceApiEnd(traceContext, 400, { error: "Missing url parameter" });
-          return Response.json({ error: "Missing url parameter" }, { status: 400 });
+        // Extract base64-encoded URL from route params
+        let imageUrl: string;
+        if ((req as any).params?.base64EncodedImageUrl) {
+          try {
+            imageUrl = Buffer.from((req as any).params.base64EncodedImageUrl, 'base64').toString('utf-8');
+          } catch (error) {
+            const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { error: "Invalid base64 encoding" });
+            traceApiEnd(traceContext, 400, { error: "Invalid base64 encoding" });
+            return Response.json({ error: "Invalid base64 encoding" }, { status: 400 });
+          }
+        } else {
+          const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { error: "Missing parameter" });
+          traceApiEnd(traceContext, 400, { error: "Missing base64EncodedImageUrl parameter" });
+          return Response.json({ error: "Missing base64EncodedImageUrl parameter" }, { status: 400 });
         }
+        
+        const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { hasUrl: !!imageUrl });
         
         try {
           const base64 = await fetchImageAsBase64(imageUrl);
