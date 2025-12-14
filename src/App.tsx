@@ -569,7 +569,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to check config version:', error);
     }
-  }, [fetchTheme, fetchHotkeys, fetchSpotifyIds]);
+  }, [fetchTheme, fetchView, fetchHotkeys, fetchSpotifyIds, fetchRecentArtists]);
 
   const fetchTracksFromSpotifyId = useCallback(async (spotifyId: string): Promise<string[]> => {
     try {
@@ -748,6 +748,17 @@ export default function App() {
     fetchPlaybackStatus();
     // Connect WebSocket for real-time updates
     connectWebSocket();
+    
+    // Set up config version polling (check every 2 seconds)
+    configPollIntervalRef.current = window.setInterval(() => {
+      checkConfigVersion();
+    }, 2000);
+    
+    // Initial config version check
+    checkConfigVersion().then(() => {
+      // Store initial version after first check
+    });
+    
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
