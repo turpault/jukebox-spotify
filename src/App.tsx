@@ -850,82 +850,82 @@ export default function App() {
           </>
         )}
 
-        {/* Spotify ID Buttons */}
-        {spotifyIds.length > 0 && (
-          <div style={styles.spotifyIdsContainer}>
-            <h3 style={{
-              color: theme.colors.primary,
-              fontFamily: theme.fonts.title,
-              marginBottom: '20px',
-              fontSize: '1.5rem',
-              textAlign: 'center',
-            }}>Quick Add to Queue</h3>
-            <div style={styles.spotifyIdsGrid}>
-              {spotifyIds.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => addToQueue(item.id)}
-                  style={styles.spotifyIdButton}
-                  title={item.name}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'scale(1.05)';
-                    e.currentTarget.style.boxShadow = theme.effects.shadow;
-                    const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
-                    if (overlay) overlay.style.opacity = '1';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'scale(1)';
-                    e.currentTarget.style.boxShadow = 'none';
-                    const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
-                    if (overlay) overlay.style.opacity = '0';
-                  }}
-                >
-                  {item.imageUrl ? (
-                    <img
-                      src={item.imageUrl}
-                      alt={item.name}
-                      style={styles.spotifyIdImage}
-                      onError={(e) => {
-                        // Fallback if image fails to load
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        const parent = target.parentElement;
-                        if (parent) {
-                          const fallback = document.createElement('div');
-                          fallback.style.cssText = `width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${theme.colors.surface}; color: ${theme.colors.text}; font-size: 0.8rem; text-align: center; padding: 10px; font-family: ${theme.fonts.primary};`;
-                          fallback.textContent = item.name;
-                          parent.appendChild(fallback);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div style={{
-                      width: '100%',
-                      height: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      background: theme.colors.surface,
-                      color: theme.colors.text,
-                      fontSize: '0.8rem',
-                      textAlign: 'center',
-                      padding: '10px',
-                      fontFamily: theme.fonts.primary,
-                    }}>
-                      {item.name}
-                    </div>
-                  )}
-                  <div style={styles.spotifyIdOverlay} data-overlay>
-                    <div style={styles.spotifyIdName}>{item.name}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {playerState.isActive && playerState.currentTrack ? (
-          <div style={styles.player}>
+          <>
+            {/* Spotify ID Buttons */}
+            {spotifyIds.length > 0 && (
+              <div style={styles.spotifyIdsContainer}>
+                <h3 style={{
+                  color: theme.colors.primary,
+                  fontFamily: theme.fonts.title,
+                  marginBottom: '20px',
+                  fontSize: '1.5rem',
+                  textAlign: 'center',
+                }}>Quick Add to Queue</h3>
+                <div style={styles.spotifyIdsGrid}>
+                  {spotifyIds.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => addToQueue(item.id)}
+                      style={styles.spotifyIdButton}
+                      title={item.name}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                        e.currentTarget.style.boxShadow = theme.effects.shadow;
+                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
+                        if (overlay) overlay.style.opacity = '1';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = 'none';
+                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
+                        if (overlay) overlay.style.opacity = '0';
+                      }}
+                    >
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          style={styles.spotifyIdImage}
+                          onError={(e) => {
+                            // Fallback if image fails to load
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const parent = target.parentElement;
+                            if (parent) {
+                              const fallback = document.createElement('div');
+                              fallback.style.cssText = `width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${theme.colors.surface}; color: ${theme.colors.text}; font-size: 0.8rem; text-align: center; padding: 10px; font-family: ${theme.fonts.primary};`;
+                              fallback.textContent = item.name;
+                              parent.appendChild(fallback);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: theme.colors.surface,
+                          color: theme.colors.text,
+                          fontSize: '0.8rem',
+                          textAlign: 'center',
+                          padding: '10px',
+                          fontFamily: theme.fonts.primary,
+                        }}>
+                          {item.name}
+                        </div>
+                      )}
+                      <div style={styles.spotifyIdOverlay} data-overlay>
+                        <div style={styles.spotifyIdName}>{item.name}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div style={styles.player}>
             {playerState.currentTrack.album_cover_url && (
               <img
                 src={playerState.currentTrack.album_cover_url}
@@ -1408,8 +1408,8 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
   },
   spotifyIdsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-    gap: '20px',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+    gap: '15px',
     maxWidth: '100%',
   },
   spotifyIdButton: {
