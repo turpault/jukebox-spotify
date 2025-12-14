@@ -354,6 +354,15 @@ export default function App() {
           position: data.position || 0,
           duration: data.duration || 0,
         }));
+        // Extract artist URI and add to Quick Add list
+        if (data.uri && data.artist_names && data.artist_names.length > 0) {
+          // Parse track URI to get artist ID
+          const trackUriParts = data.uri.split(':');
+          if (trackUriParts.length >= 3 && trackUriParts[0] === 'spotify' && trackUriParts[1] === 'track') {
+            // Fetch track details to get artist URI
+            fetchTrackArtistUri(data.uri);
+          }
+        }
         break;
       case 'playing':
         setPlayerState(prev => ({ ...prev, isPaused: false, isActive: true }));
@@ -465,6 +474,91 @@ export default function App() {
     }
   }, []);
 
+  const fetchTrackArtistUri = useCallback(async (trackUri: string) => {
+    try {
+      // Get Spotify token
+      const tokenResponse = await apiCall('/api/spotify/token', 'GET', undefined, true);
+      if (!tokenResponse || !tokenResponse.token) {
+        return;
+      }
+      const token = tokenResponse.token;
+
+      // Parse track URI
+      const parts = trackUri.split(':');
+      if (parts.length < 3 || parts[0] !== 'spotify' || parts[1] !== 'track') {
+        return;
+      }
+      const trackId = parts[2];
+
+      // Fetch track details
+      const response = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+          return;
+        }
+
+      const trackData = await response.json();
+      if (trackData.artists && trackData.artists.length > 0) {
+        const artist = trackData.artists[0];
+        const artistUri = artist.uri;
+
+        // Check if artist is already in the list
+        setSpotifyIds(prev => {
+          const exists = prev.some(item => item.id === artistUri);
+          if (exists) {
+            return prev;
+          }
+
+          // Fetch artist details for display
+          fetch(`https://api.spotify.com/v1/artists/${artist.id}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          }).then(res => res.json()).then(artistData => {
+            const artistName = artistData.name || 'Unknown Artist';
+            const artistImageUrl = artistData.images?.[0]?.url || artistData.images?.[1]?.url || '';
+
+            // Add artist to the beginning of the list
+            setSpotifyIds(prev => {
+              const exists = prev.some(item => item.id === artistUri);
+              if (exists) {
+                return prev;
+              }
+              return [{
+                id: artistUri,
+                name: artistName,
+                type: 'artist',
+                imageUrl: artistImageUrl,
+              }, ...prev];
+            });
+          }).catch(err => {
+            console.error('Failed to fetch artist details:', err);
+            // Add artist anyway with minimal info
+            setSpotifyIds(prev => {
+              const exists = prev.some(item => item.id === artistUri);
+              if (exists) {
+                return prev;
+              }
+              return [{
+                id: artistUri,
+                name: artist.name || 'Unknown Artist',
+                type: 'artist',
+                imageUrl: '',
+              }, ...prev];
+            });
+          });
+          return prev;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch artist URI:', error);
+    }
+  }, []);
+
   const checkConfigVersion = useCallback(async () => {
     try {
       const response = await apiCall('/api/config/version', 'GET', undefined, true);
@@ -518,8 +612,8 @@ export default function App() {
         const limit = 50;
         while (true) {
           const response = await fetch(`https://api.spotify.com/v1/albums/${spotifyIdValue}/tracks?limit=${limit}&offset=${offset}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
+        headers: {
+          'Authorization': `Bearer ${token}`,
             },
           });
           
@@ -991,85 +1085,12 @@ export default function App() {
         {!isConnected && (
           <>
             <h1 style={{...styles.title, fontSize: '3rem', marginBottom: '10px'}}>Jukebox</h1>
-            <p style={styles.status}>{statusMessage}</p>
+        <p style={styles.status}>{statusMessage}</p>
           </>
         )}
 
         {playerState.isActive && playerState.currentTrack ? (
           <>
-            {/* Spotify ID Buttons */}
-            {spotifyIds.length > 0 && (
-              <div style={styles.spotifyIdsContainer}>
-                <h3 style={{
-                  color: theme.colors.primary,
-                  fontFamily: theme.fonts.title,
-                  marginBottom: '20px',
-                  fontSize: '1.5rem',
-                  textAlign: 'center',
-                }}>Quick Add to Queue</h3>
-                <div style={styles.spotifyIdsGrid}>
-                  {spotifyIds.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => addToQueue(item.id)}
-                      style={styles.spotifyIdButton}
-                      title={item.name}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'scale(1.05)';
-                        e.currentTarget.style.boxShadow = theme.effects.shadow;
-                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
-                        if (overlay) overlay.style.opacity = '1';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'scale(1)';
-                        e.currentTarget.style.boxShadow = 'none';
-                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
-                        if (overlay) overlay.style.opacity = '0';
-                      }}
-                    >
-                      {item.imageUrl ? (
-                        <img
-                          src={item.imageUrl}
-                          alt={item.name}
-                          style={styles.spotifyIdImage}
-                          onError={(e) => {
-                            // Fallback if image fails to load
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const parent = target.parentElement;
-                            if (parent) {
-                              const fallback = document.createElement('div');
-                              fallback.style.cssText = `width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${theme.colors.surface}; color: ${theme.colors.text}; font-size: 0.8rem; text-align: center; padding: 10px; font-family: ${theme.fonts.primary};`;
-                              fallback.textContent = item.name;
-                              parent.appendChild(fallback);
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div style={{
-                          width: '100%',
-                          height: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: theme.colors.surface,
-                          color: theme.colors.text,
-                          fontSize: '0.8rem',
-                          textAlign: 'center',
-                          padding: '10px',
-                          fontFamily: theme.fonts.primary,
-                        }}>
-                          {item.name}
-                        </div>
-                      )}
-                      <div style={styles.spotifyIdOverlay} data-overlay>
-                        <div style={styles.spotifyIdName}>{item.name}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
             <div style={styles.player}>
             {playerState.currentTrack.album_cover_url && (
               <img
@@ -1163,7 +1184,7 @@ export default function App() {
                 <div style={styles.iconPrevious}>
                   <div style={styles.iconPreviousTriangle}></div>
                   <div style={styles.iconPreviousTriangle}></div>
-                </div>
+            </div>
               </button>
               <button 
                 style={styles.button} 
@@ -1211,7 +1232,7 @@ export default function App() {
                 {playerState.repeatTrack ? (
                   <div style={styles.iconRepeatOne}>
                     <div style={styles.iconRepeatOneText}>1</div>
-                  </div>
+          </div>
                 ) : (
                   <div style={styles.iconRepeat}>
                     <div style={styles.iconRepeatArrow}></div>
@@ -1253,6 +1274,73 @@ export default function App() {
           <div style={styles.placeholder}>
             <p>Waiting for playback...</p>
             <p style={{ fontSize: '0.8em', opacity: 0.7 }}>Play music on Spotify to see it here.</p>
+          </div>
+        )}
+
+        {/* Spotify ID Buttons - Horizontal Scrollable at Bottom */}
+        {spotifyIds.length > 0 && (
+          <div style={styles.spotifyIdsContainer}>
+            <div style={styles.spotifyIdsScroll}>
+              {spotifyIds.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => addToQueue(item.id)}
+                  style={styles.spotifyIdButton}
+                  title={item.name}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                    e.currentTarget.style.boxShadow = theme.effects.shadow;
+                    const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
+                    if (overlay) overlay.style.opacity = '1';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.boxShadow = 'none';
+                    const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
+                    if (overlay) overlay.style.opacity = '0';
+                  }}
+                >
+                  {item.imageUrl ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={item.name}
+                      style={styles.spotifyIdImage}
+                      onError={(e) => {
+                        // Fallback if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          const fallback = document.createElement('div');
+                          fallback.style.cssText = `width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${theme.colors.surface}; color: ${theme.colors.text}; font-size: 0.8rem; text-align: center; padding: 10px; font-family: ${theme.fonts.primary};`;
+                          fallback.textContent = item.name;
+                          parent.appendChild(fallback);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: theme.colors.surface,
+                      color: theme.colors.text,
+                      fontSize: '0.8rem',
+                      textAlign: 'center',
+                      padding: '10px',
+                      fontFamily: theme.fonts.primary,
+                    }}>
+                      {item.name}
+                    </div>
+                  )}
+                  <div style={styles.spotifyIdOverlay} data-overlay>
+                    <div style={styles.spotifyIdName}>{item.name}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -1546,22 +1634,32 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
     borderRadius: '2px 0 0 2px',
   },
   spotifyIdsContainer: {
-    marginBottom: '40px',
-    padding: '20px',
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: '15px 20px',
     background: theme.colors.surface,
-    borderRadius: theme.effects.borderRadius,
-    border: `2px solid ${theme.colors.border}`,
+    borderTop: `2px solid ${theme.colors.border}`,
+    boxShadow: `0 -4px 20px rgba(0, 0, 0, 0.5)`,
+    zIndex: 100,
   },
-  spotifyIdsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+  spotifyIdsScroll: {
+    display: 'flex',
     gap: '15px',
-    maxWidth: '100%',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    scrollbarWidth: 'thin',
+    scrollbarColor: `${theme.colors.border} ${theme.colors.surface}`,
+    paddingBottom: '5px',
+    // Hide scrollbar for webkit browsers
+    WebkitOverflowScrolling: 'touch',
   },
   spotifyIdButton: {
     position: 'relative',
-    width: '100%',
-    aspectRatio: '1',
+    flexShrink: 0,
+    width: '100px',
+    height: '100px',
     padding: 0,
     border: `2px solid ${theme.colors.border}`,
     borderRadius: theme.effects.borderRadius,
