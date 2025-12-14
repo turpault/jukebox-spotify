@@ -33,7 +33,8 @@ interface SpotifyIdWithArtwork {
 
 // All API calls are now proxied through the server
 const LIBRESPOT_API_URL = ""; // Use relative URLs to proxy through server
-const LIBRESPOT_WS_URL = "ws://localhost:3000/api/ws";
+// Use relative WebSocket URL that connects to the same server
+const LIBRESPOT_WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/ws`;
 
 // Theme system
 interface Theme {
