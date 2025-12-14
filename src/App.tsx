@@ -428,6 +428,17 @@ export default function App() {
     }
   }, []);
 
+  const fetchHotkeys = useCallback(async () => {
+    try {
+      const response = await apiCall('/api/hotkeys', 'GET', undefined, true);
+      if (response) {
+        setHotkeys(response);
+      }
+    } catch (error) {
+      console.error('Failed to fetch hotkeys:', error);
+    }
+  }, []);
+
   const updateTheme = useCallback(async (newThemeName: string) => {
     // Update theme immediately for responsive UI
     if (themes[newThemeName]) {
@@ -604,17 +615,6 @@ export default function App() {
     const newPosition = Math.max(0, Math.min(playerState.duration, playerState.position + delta));
     await seek(newPosition);
   };
-
-  const fetchHotkeys = useCallback(async () => {
-    try {
-      const response = await apiCall('/api/hotkeys', 'GET', undefined, true);
-      if (response) {
-        setHotkeys(response);
-      }
-    } catch (error) {
-      console.error('Failed to fetch hotkeys:', error);
-    }
-  }, []);
 
   // Keyboard hotkey handler
   useEffect(() => {
