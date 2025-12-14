@@ -442,6 +442,17 @@ serve({
         return Response.json({ kiosk: isKioskMode });
       },
     },
+    // Config version API
+    "/api/config/version": {
+      GET: async () => {
+        try {
+          const version = await getConfigVersion();
+          return Response.json({ version });
+        } catch (error) {
+          return Response.json({ error: "Failed to get config version" }, { status: 500 });
+        }
+      },
+    },
     // Hotkeys API
     "/api/hotkeys": {
       GET: async () => {
