@@ -1,5 +1,7 @@
 // Tracing utility for API calls and WebSocket traffic
 
+import { logApiCall } from './api-logger';
+
 interface TraceContext {
   traceId: string;
   startTime: number;
@@ -8,6 +10,11 @@ interface TraceContext {
   direction?: 'inbound' | 'outbound';
   type?: 'api' | 'websocket';
 }
+
+// Check if LOG_API environment variable is set
+const shouldLogToConsole = (): boolean => {
+  return process.env.LOG_API === '1' || process.env.LOG_API === 'true';
+};
 
 // Generate a unique trace ID
 function generateTraceId(): string {
@@ -37,14 +44,35 @@ function formatTrace(
     ...(additionalData && { data: additionalData }),
   };
 
-  const logString = `[TRACE] [${timestamp}] [${context.traceId}] ${level.toUpperCase()}: ${message}`;
-  
-  if (level === 'error') {
-    console.error(logString, logEntry);
-  } else if (level === 'warn') {
-    console.warn(logString, logEntry);
-  } else {
-    console.log(logString, logEntry);
+  // Always log to database
+  logApiCall({
+    timestamp,
+    traceId: context.traceId,
+    level,
+    message,
+    method: context.method,
+    path: context.path,
+    direction: context.direction,
+    type: context.type,
+    durationMs: duration,
+    statusCode: additionalData?.statusCode,
+    error: additionalData?.error ? (typeof additionalData.error === 'string' ? additionalData.error : JSON.stringify(additionalData.error)) : undefined,
+    requestBody: additionalData?.requestBody,
+    responseBody: additionalData?.responseBody,
+    data: additionalData ? JSON.stringify(additionalData) : undefined,
+  });
+
+  // Only log to console if LOG_API environment variable is set
+  if (shouldLogToConsole()) {
+    const logString = `[TRACE] [${timestamp}] [${context.traceId}] ${level.toUpperCase()}: ${message}`;
+    
+    if (level === 'error') {
+      console.error(logString, logEntry);
+    } else if (level === 'warn') {
+      console.warn(logString, logEntry);
+    } else {
+      console.log(logString, logEntry);
+    }
   }
 }
 

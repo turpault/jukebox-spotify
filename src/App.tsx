@@ -1576,8 +1576,10 @@ const createStyles = (theme: Theme, isMobile: boolean): Record<string, React.CSS
     color: theme.colors.text,
     position: 'relative',
     overflow: 'hidden',
-    // iOS 9 doesn't support env() - use fallback values
-    paddingTop: isMobile ? '0' : '0', // Use 0 for iOS 9, env() only works on iOS 11+
+    // Safe area padding - iOS 9 doesn't support env(), but also doesn't have notches
+    // So we can safely use 0 for iOS 9 devices
+    // For iOS 11+, the CSS @supports rule in index.html will add the env() padding
+    paddingTop: isMobile ? '0' : '0',
     paddingBottom: isMobile ? '0' : '0',
     paddingLeft: isMobile ? '0' : '0',
     paddingRight: isMobile ? '0' : '0',

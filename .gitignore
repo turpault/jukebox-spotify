@@ -5,3 +5,4 @@ public/dist
 .DS_Store
 config.json
 cache/
+api_logs.db

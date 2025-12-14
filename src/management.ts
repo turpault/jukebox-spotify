@@ -1,5 +1,6 @@
 import { getConfig, setConfig, getConfigVersion, Config } from "./config";
 import { traceApiStart, traceApiEnd } from "./tracing";
+import { getApiStats } from "./api-logger";
 
 export async function getTheme(): Promise<string> {
   try {
@@ -216,6 +217,20 @@ export function createManagementRoutes(isKioskMode: boolean) {
         } catch (error) {
           traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to set view" }, { status: 500 });
+        }
+      },
+    },
+    // API stats endpoint
+    "/api/stats": {
+      GET: async () => {
+        const traceContext = traceApiStart('GET', '/api/stats', 'inbound');
+        try {
+          const stats = getApiStats();
+          traceApiEnd(traceContext, 200, { statsRetrieved: true });
+          return Response.json(stats);
+        } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
+          return Response.json({ error: "Failed to get API stats" }, { status: 500 });
         }
       },
     },

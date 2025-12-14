@@ -129,6 +129,7 @@ export default function Manage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<any>(null);
   const [searching, setSearching] = useState(false);
+  const [apiStats, setApiStats] = useState<any>(null);
   const isInitialLoad = useRef(true);
 
   const fetchHotkeys = useCallback(async () => {
@@ -230,6 +231,18 @@ export default function Manage() {
     }
   }, []);
 
+  const fetchApiStats = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/stats`);
+      const data = await response.json();
+      if (data && !data.error) {
+        setApiStats(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch API stats:', error);
+    }
+  }, []);
+
   const saveRecentArtistsLimit = async (limit: number) => {
     try {
       const response = await fetch(`${API_BASE}/api/spotify/recent-artists-limit`, {
@@ -253,11 +266,20 @@ export default function Manage() {
     fetchSpotifyIds();
     fetchRecentArtists();
     fetchRecentArtistsLimit();
+    fetchApiStats();
     // Mark initial load as complete after a short delay
     setTimeout(() => {
       isInitialLoad.current = false;
     }, 1000);
-  }, [fetchHotkeys, fetchTheme, fetchView, fetchSpotifyIds, fetchRecentArtists, fetchRecentArtistsLimit]);
+  }, [fetchHotkeys, fetchTheme, fetchView, fetchSpotifyIds, fetchRecentArtists, fetchRecentArtistsLimit, fetchApiStats]);
+
+  // Poll API stats every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchApiStats();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [fetchApiStats]);
 
   const saveHotkeys = async (hotkeysToSave: HotkeyConfig) => {
     try {
@@ -788,6 +810,183 @@ export default function Manage() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* API Statistics */}
+        <div style={{ ...styles.card, marginBottom: '40px' }}>
+          <h2 style={styles.cardTitle}>API Statistics</h2>
+          {apiStats ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Overview Stats */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '15px',
+              }}>
+                <div style={{
+                  padding: '15px',
+                  background: theme.colors.surface,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: theme.effects.borderRadius,
+                }}>
+                  <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary, marginBottom: '5px' }}>
+                    Total Calls
+                  </div>
+                  <div style={{ color: theme.colors.primary, fontSize: '1.5rem', fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                    {apiStats.totalCalls.toLocaleString()}
+                  </div>
+                </div>
+                <div style={{
+                  padding: '15px',
+                  background: theme.colors.surface,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: theme.effects.borderRadius,
+                }}>
+                  <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary, marginBottom: '5px' }}>
+                    Total Errors
+                  </div>
+                  <div style={{ color: apiStats.totalErrors > 0 ? '#FF4444' : theme.colors.primary, fontSize: '1.5rem', fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                    {apiStats.totalErrors.toLocaleString()}
+                  </div>
+                </div>
+                <div style={{
+                  padding: '15px',
+                  background: theme.colors.surface,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: theme.effects.borderRadius,
+                }}>
+                  <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary, marginBottom: '5px' }}>
+                    Avg Duration
+                  </div>
+                  <div style={{ color: theme.colors.primary, fontSize: '1.5rem', fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                    {apiStats.averageDuration}ms
+                  </div>
+                </div>
+                <div style={{
+                  padding: '15px',
+                  background: theme.colors.surface,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: theme.effects.borderRadius,
+                }}>
+                  <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary, marginBottom: '5px' }}>
+                    Last 24h
+                  </div>
+                  <div style={{ color: theme.colors.primary, fontSize: '1.5rem', fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                    {apiStats.callsLast24h.toLocaleString()}
+                  </div>
+                </div>
+                <div style={{
+                  padding: '15px',
+                  background: theme.colors.surface,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: theme.effects.borderRadius,
+                }}>
+                  <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary, marginBottom: '5px' }}>
+                    Last Hour
+                  </div>
+                  <div style={{ color: theme.colors.primary, fontSize: '1.5rem', fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                    {apiStats.callsLastHour.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Calls by Method */}
+              {Object.keys(apiStats.callsByMethod).length > 0 && (
+                <div>
+                  <h3 style={{ ...styles.cardTitle, fontSize: '1.2rem', marginBottom: '10px' }}>Calls by Method</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {Object.entries(apiStats.callsByMethod)
+                      .sort(([, a], [, b]) => (b as number) - (a as number))
+                      .map(([method, count]) => (
+                        <div key={method} style={styles.actionRow}>
+                          <span style={styles.actionLabel}>{method}:</span>
+                          <span style={{ color: theme.colors.primary, fontFamily: theme.fonts.primary, fontWeight: 'bold' }}>
+                            {count.toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Calls by Path */}
+              {Object.keys(apiStats.callsByPath).length > 0 && (
+                <div>
+                  <h3 style={{ ...styles.cardTitle, fontSize: '1.2rem', marginBottom: '10px' }}>Top Endpoints</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {Object.entries(apiStats.callsByPath)
+                      .slice(0, 10)
+                      .map(([path, count]) => (
+                        <div key={path} style={styles.actionRow}>
+                          <span style={{ ...styles.actionLabel, fontFamily: theme.fonts.primary, fontSize: '0.9rem' }}>{path}:</span>
+                          <span style={{ color: theme.colors.primary, fontFamily: theme.fonts.primary, fontWeight: 'bold' }}>
+                            {count.toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Calls by Status */}
+              {Object.keys(apiStats.callsByStatus).length > 0 && (
+                <div>
+                  <h3 style={{ ...styles.cardTitle, fontSize: '1.2rem', marginBottom: '10px' }}>Calls by Status Code</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {Object.entries(apiStats.callsByStatus)
+                      .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                      .map(([status, count]) => (
+                        <div key={status} style={styles.actionRow}>
+                          <span style={styles.actionLabel}>
+                            {status} {status === '200' ? '✓' : status.startsWith('4') || status.startsWith('5') ? '✗' : ''}:
+                          </span>
+                          <span style={{ 
+                            color: status === '200' ? theme.colors.primary : status.startsWith('4') || status.startsWith('5') ? '#FF4444' : theme.colors.textSecondary,
+                            fontFamily: theme.fonts.primary,
+                            fontWeight: 'bold'
+                          }}>
+                            {count.toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Errors */}
+              {apiStats.recentErrors && apiStats.recentErrors.length > 0 && (
+                <div>
+                  <h3 style={{ ...styles.cardTitle, fontSize: '1.2rem', marginBottom: '10px' }}>Recent Errors</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
+                    {apiStats.recentErrors.map((error: any, index: number) => (
+                      <div key={index} style={{
+                        padding: '10px',
+                        background: 'rgba(255, 68, 68, 0.1)',
+                        border: `1px solid #FF4444`,
+                        borderRadius: theme.effects.borderRadius,
+                        fontSize: '0.85rem',
+                        fontFamily: theme.fonts.primary,
+                      }}>
+                        <div style={{ color: '#FF4444', fontWeight: 'bold', marginBottom: '5px' }}>
+                          {error.path || error.message || 'Unknown error'}
+                        </div>
+                        {error.error && (
+                          <div style={{ color: theme.colors.textSecondary, fontSize: '0.8rem' }}>
+                            {error.error}
+                          </div>
+                        )}
+                        <div style={{ color: theme.colors.textSecondary, fontSize: '0.75rem', marginTop: '5px' }}>
+                          {new Date(error.timestamp).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p style={styles.helpText}>Loading API statistics...</p>
+          )}
         </div>
 
         {/* Configured Spotify IDs */}
