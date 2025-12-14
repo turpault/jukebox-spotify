@@ -164,6 +164,18 @@ interface HotkeyConfig {
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(steampunkTheme);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   const [themeName, setThemeName] = useState<string>('steampunk');
   const [viewName, setViewName] = useState<string>('default');
   const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
@@ -476,14 +488,32 @@ export default function App() {
 
   const fetchSpotifyIds = useCallback(async () => {
     try {
-      const response = await apiCall('/api/spotify/ids', 'GET', undefined, true);
-      if (response && response.ids) {
-        setConfiguredSpotifyIds(response.ids.map((item: any) => ({
-          id: item.id,
-          name: item.name || 'Unknown',
-          type: item.type || 'unknown',
-          imageUrl: item.imageUrl || '',
-        })));
+      // First get the list of IDs
+      const idsResponse = await apiCall('/api/spotify/ids', 'GET', undefined, true);
+      if (idsResponse && idsResponse.ids) {
+        const ids: string[] = idsResponse.ids;
+        
+        // Then fetch metadata for each ID
+        const metadataPromises = ids.map(async (id: string) => {
+          try {
+            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined, true);
+            if (metadataResponse) {
+              return {
+                id: metadataResponse.id || id,
+                name: metadataResponse.name || 'Unknown',
+                type: metadataResponse.type || 'unknown',
+                imageUrl: metadataResponse.imageUrl || '',
+              };
+            }
+            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
+          } catch (error) {
+            console.error(`Failed to fetch metadata for ${id}:`, error);
+            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
+          }
+        });
+        
+        const metadata = await Promise.all(metadataPromises);
+        setConfiguredSpotifyIds(metadata);
       }
     } catch (error) {
       console.error('Failed to fetch Spotify IDs:', error);
@@ -492,14 +522,32 @@ export default function App() {
 
   const fetchRecentArtists = useCallback(async () => {
     try {
-      const response = await apiCall('/api/spotify/recent-artists', 'GET', undefined, true);
-      if (response && response.ids) {
-        setRecentArtists(response.ids.map((item: any) => ({
-          id: item.id,
-          name: item.name || 'Unknown',
-          type: item.type || 'unknown',
-          imageUrl: item.imageUrl || '',
-        })));
+      // First get the list of IDs
+      const idsResponse = await apiCall('/api/spotify/recent-artists', 'GET', undefined, true);
+      if (idsResponse && idsResponse.ids) {
+        const ids: string[] = idsResponse.ids;
+        
+        // Then fetch metadata for each ID
+        const metadataPromises = ids.map(async (id: string) => {
+          try {
+            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined, true);
+            if (metadataResponse) {
+              return {
+                id: metadataResponse.id || id,
+                name: metadataResponse.name || 'Unknown',
+                type: metadataResponse.type || 'unknown',
+                imageUrl: metadataResponse.imageUrl || '',
+              };
+            }
+            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
+          } catch (error) {
+            console.error(`Failed to fetch metadata for ${id}:`, error);
+            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
+          }
+        });
+        
+        const metadata = await Promise.all(metadataPromises);
+        setRecentArtists(metadata);
       }
     } catch (error) {
       console.error('Failed to fetch recent artists:', error);
@@ -1020,7 +1068,18 @@ export default function App() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  // Detect mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const styles = useMemo(() => createStyles(theme, isMobile), [theme, isMobile]);
 
   // Add spinner animation if not already in document
   useEffect(() => {
@@ -1307,9 +1366,15 @@ export default function App() {
           </div>
         )}
 
-        {/* Spotify ID Lists - Side by side, vertically scrollable - hidden in dash view */}
+        {/* Spotify ID Lists - Side by side on desktop, stacked on mobile - hidden in dash view */}
         {viewName !== 'dash' && (
-          <>
+          <div style={{
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            width: '100%',
+            gap: isMobile ? '0' : '0',
+            marginTop: isMobile ? '20px' : '0',
+          }}>
             {/* Configured IDs - Left Side */}
             {configuredSpotifyIds.length > 0 && (
               <div style={styles.spotifyIdsSidebarLeft}>
@@ -1457,26 +1522,31 @@ export default function App() {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-// Create styles function that uses theme
-const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
+// Create styles function that uses theme and mobile detection
+const createStyles = (theme: Theme, isMobile: boolean): Record<string, React.CSSProperties> => ({
   container: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     height: '100%',
+    minHeight: '100vh',
     fontFamily: theme.fonts.primary,
     background: theme.colors.background,
     color: theme.colors.text,
     position: 'relative',
     overflow: 'hidden',
+    paddingTop: isMobile ? 'env(safe-area-inset-top)' : '0',
+    paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : '0',
+    paddingLeft: isMobile ? 'env(safe-area-inset-left)' : '0',
+    paddingRight: isMobile ? 'env(safe-area-inset-right)' : '0',
   },
   loadingContent: {
     display: 'flex',
@@ -1486,7 +1556,7 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
     gap: '30px',
   },
   title: {
-    fontSize: '4rem',
+    fontSize: isMobile ? '2.5rem' : '4rem',
     margin: 0,
     fontWeight: 'bold',
     fontFamily: theme.fonts.title,
@@ -1523,15 +1593,16 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
   },
   content: {
     textAlign: 'center',
-    maxWidth: '800px',
+    maxWidth: isMobile ? '100%' : '800px',
     width: '100%',
-    padding: '20px',
-    marginLeft: '180px',
-    marginRight: '180px',
+    padding: isMobile ? '15px' : '20px',
+    marginLeft: isMobile ? '0' : '180px',
+    marginRight: isMobile ? '0' : '180px',
     background: theme.colors.surface,
     borderRadius: theme.effects.borderRadius,
     border: `2px solid ${theme.colors.border}`,
     boxShadow: theme.effects.shadow,
+    boxSizing: 'border-box',
   },
   status: {
     color: theme.colors.textSecondary,
@@ -1545,8 +1616,9 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
     gap: '20px',
   },
   albumArt: {
-    width: '300px',
-    height: '300px',
+    width: isMobile ? '250px' : '300px',
+    height: isMobile ? '250px' : '300px',
+    maxWidth: '100%',
     borderRadius: theme.effects.borderRadius,
     boxShadow: theme.effects.shadow,
     border: `3px solid ${theme.colors.border}`,
@@ -1556,24 +1628,28 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
   },
   controls: {
     display: 'flex',
-    gap: '20px',
+    gap: isMobile ? '15px' : '20px',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   button: {
     background: `linear-gradient(135deg, ${theme.colors.surface} 0%, ${theme.colors.border} 100%)`,
     border: `2px solid ${theme.colors.border}`,
     color: theme.colors.text,
-    fontSize: '2rem',
+    fontSize: isMobile ? '1.5rem' : '2rem',
     cursor: 'pointer',
-    padding: '12px',
+    padding: isMobile ? '15px' : '12px',
     borderRadius: '50%',
     transition: 'all 0.3s ease',
     boxShadow: `0 4px 15px rgba(0, 0, 0, 0.5)`,
-    minWidth: '60px',
-    minHeight: '60px',
+    minWidth: isMobile ? '56px' : '60px',
+    minHeight: isMobile ? '56px' : '60px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
   },
   buttonHover: {
     background: `linear-gradient(135deg, ${theme.colors.border} 0%, ${theme.colors.primary} 100%)`,
@@ -1592,23 +1668,26 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
   progressContainer: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: isMobile ? '8px' : '10px',
     width: '100%',
-    maxWidth: '500px',
+    maxWidth: isMobile ? '100%' : '500px',
+    padding: isMobile ? '0 10px' : '0',
   },
   progressBar: {
     flex: 1,
-    height: '8px',
+    height: isMobile ? '10px' : '8px',
     borderRadius: '4px',
     background: theme.colors.progressTrack,
     outline: 'none',
     cursor: 'pointer',
     border: `1px solid ${theme.colors.border}`,
+    touchAction: 'pan-y',
+    WebkitTapHighlightColor: 'transparent',
   },
   timeLabel: {
-    fontSize: '0.9em',
+    fontSize: isMobile ? '0.8em' : '0.9em',
     color: theme.colors.textSecondary,
-    minWidth: '45px',
+    minWidth: isMobile ? '40px' : '45px',
     textAlign: 'center',
     fontFamily: theme.fonts.primary,
     fontVariantNumeric: 'tabular-nums',
@@ -1616,9 +1695,10 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
   volumeContainer: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: isMobile ? '8px' : '10px',
     width: '100%',
-    maxWidth: '300px',
+    maxWidth: isMobile ? '100%' : '300px',
+    padding: isMobile ? '0 10px' : '0',
   },
   // Icon styles - simple shapes
   iconPlay: {
@@ -1752,32 +1832,38 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
     borderRadius: '2px 0 0 2px',
   },
   spotifyIdsSidebarLeft: {
-    position: 'fixed',
+    position: isMobile ? 'relative' : 'fixed',
     left: 0,
     top: 0,
-    bottom: 0,
-    width: '160px',
-    padding: '15px 10px',
+    bottom: isMobile ? 'auto' : 0,
+    width: isMobile ? '100%' : '160px',
+    maxHeight: isMobile ? '200px' : 'none',
+    padding: isMobile ? '10px' : '15px 10px',
     background: theme.colors.surface,
-    borderRight: `2px solid ${theme.colors.border}`,
-    boxShadow: `4px 0 20px rgba(0, 0, 0, 0.5)`,
+    borderRight: isMobile ? 'none' : `2px solid ${theme.colors.border}`,
+    borderBottom: isMobile ? `2px solid ${theme.colors.border}` : 'none',
+    boxShadow: isMobile ? 'none' : `4px 0 20px rgba(0, 0, 0, 0.5)`,
     zIndex: 100,
     display: 'flex',
     flexDirection: 'column',
+    marginBottom: isMobile ? '10px' : '0',
   },
   spotifyIdsSidebarRight: {
-    position: 'fixed',
+    position: isMobile ? 'relative' : 'fixed',
     right: 0,
     top: 0,
-    bottom: 0,
-    width: '160px',
-    padding: '15px 10px',
+    bottom: isMobile ? 'auto' : 0,
+    width: isMobile ? '100%' : '160px',
+    maxHeight: isMobile ? '200px' : 'none',
+    padding: isMobile ? '10px' : '15px 10px',
     background: theme.colors.surface,
-    borderLeft: `2px solid ${theme.colors.border}`,
-    boxShadow: `-4px 0 20px rgba(0, 0, 0, 0.5)`,
+    borderLeft: isMobile ? 'none' : `2px solid ${theme.colors.border}`,
+    borderTop: isMobile ? `2px solid ${theme.colors.border}` : 'none',
+    boxShadow: isMobile ? 'none' : `-4px 0 20px rgba(0, 0, 0, 0.5)`,
     zIndex: 100,
     display: 'flex',
     flexDirection: 'column',
+    marginTop: isMobile ? '10px' : '0',
   },
   spotifyIdsSidebarTitle: {
     color: theme.colors.primary,
@@ -1791,10 +1877,10 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
   },
   spotifyIdsSidebarScroll: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: '15px',
-    overflowY: 'auto',
-    overflowX: 'hidden',
+    flexDirection: isMobile ? 'row' : 'column',
+    gap: isMobile ? '10px' : '15px',
+    overflowY: isMobile ? 'hidden' : 'auto',
+    overflowX: isMobile ? 'auto' : 'hidden',
     scrollbarWidth: 'thin',
     scrollbarColor: `${theme.colors.border} ${theme.colors.surface}`,
     flex: 1,
@@ -1878,12 +1964,14 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
   },
   volumeSlider: {
     flex: 1,
-    height: '6px',
+    height: isMobile ? '8px' : '6px',
     borderRadius: '3px',
     background: theme.colors.progressTrack,
     outline: 'none',
     cursor: 'pointer',
     border: `1px solid ${theme.colors.border}`,
+    touchAction: 'pan-y',
+    WebkitTapHighlightColor: 'transparent',
   },
   volumeLabel: {
     fontSize: '0.9em',

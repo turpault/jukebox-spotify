@@ -1,6 +1,156 @@
 import { getConfig, setConfig } from "./config";
+import { readFile, writeFile, mkdir, stat } from "fs/promises";
+import { join } from "path";
+import { createHash } from "crypto";
+
+const CACHE_DIR = "cache";
+const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
 
 let spotifyTokenCache: { token: string; expiresAt: number } | null = null;
+
+// Ensure cache directory exists
+async function ensureCacheDir() {
+  try {
+    await mkdir(CACHE_DIR, { recursive: true });
+  } catch (error) {
+    // Directory might already exist, ignore error
+  }
+}
+
+// Get cache file path for a Spotify ID
+function getCacheFilePath(spotifyId: string, suffix: string = 'json'): string {
+  const hash = createHash('md5').update(spotifyId).digest('hex');
+  return join(CACHE_DIR, `${hash}.${suffix}`);
+}
+
+// Get cache file path for artwork
+function getArtworkCachePath(spotifyId: string, imageUrl: string): string {
+  const urlHash = createHash('md5').update(imageUrl).digest('hex');
+  const idHash = createHash('md5').update(spotifyId).digest('hex');
+  const ext = imageUrl.split('.').pop()?.split('?')[0] || 'jpg';
+  return join(CACHE_DIR, `artwork_${idHash}_${urlHash}.${ext}`);
+}
+
+// Read from disk cache
+async function readFromCache<T>(cacheKey: string): Promise<T | null> {
+  try {
+    await ensureCacheDir();
+    const cachePath = getCacheFilePath(cacheKey);
+    const stats = await stat(cachePath);
+    
+    // Check if cache is expired
+    const age = Date.now() - stats.mtimeMs;
+    if (age > CACHE_DURATION) {
+      return null; // Cache expired
+    }
+    
+    const data = await readFile(cachePath, 'utf-8');
+    return JSON.parse(data) as T;
+  } catch (error) {
+    // Cache file doesn't exist or is invalid
+    return null;
+  }
+}
+
+// Write to disk cache
+async function writeToCache<T>(cacheKey: string, data: T): Promise<void> {
+  try {
+    await ensureCacheDir();
+    const cachePath = getCacheFilePath(cacheKey);
+    await writeFile(cachePath, JSON.stringify(data), 'utf-8');
+  } catch (error) {
+    console.error(`Failed to write cache for ${cacheKey}:`, error);
+  }
+}
+
+// Cache artwork image
+async function cacheArtwork(spotifyId: string, imageUrl: string): Promise<string | null> {
+  if (!imageUrl) return null;
+  
+  try {
+    await ensureCacheDir();
+    const cachePath = getArtworkCachePath(spotifyId, imageUrl);
+    
+    // Check if already cached
+    try {
+      await stat(cachePath);
+      // File exists, return relative path
+      return `/cache/${cachePath.split('/').pop()}`;
+    } catch {
+      // File doesn't exist, fetch and cache it
+    }
+    
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      return null;
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    await writeFile(cachePath, buffer);
+    
+    return `/cache/${cachePath.split('/').pop()}`;
+  } catch (error) {
+    console.error(`Failed to cache artwork for ${spotifyId}:`, error);
+    return null;
+  }
+}
+
+// Get cached artwork or return original URL
+async function getCachedArtworkUrl(spotifyId: string, imageUrl: string): Promise<string> {
+  if (!imageUrl) return '';
+  
+  const cached = await cacheArtwork(spotifyId, imageUrl);
+  return cached || imageUrl;
+}
+
+// Helper function to fetch with exponential backoff retry
+async function fetchWithRetry(
+  url: string,
+  headers: HeadersInit,
+  maxRetries: number = 3,
+  initialDelay: number = 1000
+): Promise<Response> {
+  let delay = initialDelay;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, { headers });
+    
+    if (response.status === 429) {
+      // Rate limited - check for Retry-After header
+      const retryAfter = response.headers.get('Retry-After');
+      if (retryAfter) {
+        const retrySeconds = parseInt(retryAfter, 10);
+        if (!isNaN(retrySeconds) && retrySeconds > 0) {
+          delay = retrySeconds * 1000;
+          console.warn(`Spotify API rate limited. Retrying after ${retrySeconds} seconds (attempt ${attempt + 1}/${maxRetries + 1})`);
+        } else {
+          // Exponential backoff if no Retry-After header
+          delay = initialDelay * Math.pow(2, attempt);
+          console.warn(`Spotify API rate limited. Retrying after ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
+        }
+      } else {
+        // Exponential backoff if no Retry-After header
+        delay = initialDelay * Math.pow(2, attempt);
+        console.warn(`Spotify API rate limited. Retrying after ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
+      }
+      
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      } else {
+        console.error(`Spotify API rate limited. Max retries (${maxRetries + 1}) exceeded.`);
+        throw new Error(`Rate limit exceeded after ${maxRetries + 1} attempts`);
+      }
+    }
+    
+    // Not a rate limit error, return the response
+    return response;
+  }
+  
+  // Should never reach here, but TypeScript needs it
+  throw new Error('Unexpected error in fetchWithRetry');
+}
 
 // Get Spotify access token using client credentials flow
 export async function getSpotifyToken(): Promise<string | null> {
@@ -54,61 +204,98 @@ export function clearSpotifyTokenCache() {
   spotifyTokenCache = null;
 }
 
-// Helper function to fetch metadata for Spotify IDs
-export async function fetchSpotifyIdsMetadata(ids: string[], token: string | null) {
+// Fetch metadata for a single Spotify ID with disk caching
+async function fetchSpotifyMetadata(id: string, token: string | null): Promise<{ id: string; name: string; type: string; imageUrl: string }> {
   if (!token) {
-    return ids.map(id => ({ id, name: 'Unknown', type: 'unknown', imageUrl: '' }));
+    return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
   }
 
-  return Promise.all(
-    ids.map(async (id: string) => {
-      try {
-        const parts = id.split(':');
-        if (parts.length < 3 || parts[0] !== 'spotify') {
-          return { id, name: 'Invalid URI', type: 'unknown', imageUrl: '' };
-        }
+  try {
+    const parts = id.split(':');
+    if (parts.length < 3 || parts[0] !== 'spotify') {
+      return { id, name: 'Invalid URI', type: 'unknown', imageUrl: '' };
+    }
 
-        const type = parts[1];
-        const spotifyId = parts[2];
-
-        const response = await fetch(`https://api.spotify.com/v1/${type}s/${spotifyId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          return { id, name: 'Unknown', type, imageUrl: '' };
-        }
-
-        const data = await response.json();
-        const name = data.name || 'Unknown';
-        let displayName = name;
-        let imageUrl = '';
-
-        if (type === 'track') {
-          const artist = data.artists?.[0]?.name || '';
-          displayName = artist ? `${name} - ${artist}` : name;
-          imageUrl = data.album?.images?.[0]?.url || data.album?.images?.[1]?.url || '';
-        } else if (type === 'album') {
-          const artist = data.artists?.[0]?.name || '';
-          displayName = artist ? `${name} - ${artist}` : name;
-          imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
-        } else if (type === 'playlist') {
-          const owner = data.owner?.display_name || data.owner?.id || '';
-          displayName = owner ? `${name} (by ${owner})` : name;
-          imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
-        } else if (type === 'artist') {
-          imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
-        }
-
-        return { id, name: displayName, type, imageUrl };
-      } catch (error) {
-        const parts = id.split(':');
-        return { id, name: 'Unknown', type: parts[1] || 'unknown', imageUrl: '' };
+    // Check disk cache first
+    const cached = await readFromCache<{ id: string; name: string; type: string; imageUrl: string }>(id);
+    if (cached) {
+      console.log(`Using cached metadata for ${id}`);
+      // Get cached artwork URL if available
+      if (cached.imageUrl) {
+        const cachedArtworkUrl = await getCachedArtworkUrl(id, cached.imageUrl);
+        return { ...cached, imageUrl: cachedArtworkUrl };
       }
-    })
-  );
+      return cached;
+    }
+
+    const type = parts[1];
+    const spotifyId = parts[2];
+
+    // Fetch with retry logic for rate limiting
+    const response = await fetchWithRetry(
+      `https://api.spotify.com/v1/${type}s/${spotifyId}`,
+      {
+        'Authorization': `Bearer ${token}`,
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error(`Spotify API error for ${id}: ${response.status} ${response.statusText}`, errorText);
+      return { id, name: 'Unknown', type, imageUrl: '' };
+    }
+
+    const data = await response.json();
+    const name = data.name || 'Unknown';
+    let displayName = name;
+    let imageUrl = '';
+
+    if (type === 'track') {
+      const artist = data.artists?.[0]?.name || '';
+      displayName = artist ? `${name} - ${artist}` : name;
+      imageUrl = data.album?.images?.[0]?.url || data.album?.images?.[1]?.url || '';
+    } else if (type === 'album') {
+      const artist = data.artists?.[0]?.name || '';
+      displayName = artist ? `${name} - ${artist}` : name;
+      imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
+    } else if (type === 'playlist') {
+      const owner = data.owner?.display_name || data.owner?.id || '';
+      displayName = owner ? `${name} (by ${owner})` : name;
+      imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
+    } else if (type === 'artist') {
+      imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
+    }
+
+    // Cache artwork if available
+    let cachedImageUrl = imageUrl;
+    if (imageUrl) {
+      const cached = await cacheArtwork(id, imageUrl);
+      if (cached) {
+        cachedImageUrl = cached;
+      }
+    }
+
+    const result = { id, name: displayName, type, imageUrl: cachedImageUrl };
+    
+    // Cache the metadata to disk
+    await writeToCache(id, result);
+    
+    return result;
+  } catch (error) {
+    console.error(`Error fetching metadata for ${id}:`, error);
+    
+    // If it's a rate limit error, try to return cached data even if expired
+    if (error instanceof Error && error.message.includes('Rate limit')) {
+      const cached = await readFromCache<{ id: string; name: string; type: string; imageUrl: string }>(id);
+      if (cached) {
+        console.log(`Rate limited, using expired cache for ${id}`);
+        return cached;
+      }
+    }
+    
+    const parts = id.split(':');
+    return { id, name: 'Unknown', type: parts[1] || 'unknown', imageUrl: '' };
+  }
 }
 
 export function createSpotifyRoutes() {
@@ -127,20 +314,18 @@ export function createSpotifyRoutes() {
         }
       },
     },
-    // Configured Spotify IDs API
+    // Configured Spotify IDs API - returns just the list of IDs
     "/api/spotify/ids": {
       GET: async () => {
         try {
           const config = await getConfig();
           const spotifyIds = config.spotify?.configuredSpotifyIds || [];
-          const token = await getSpotifyToken();
-          const idsWithMetadata = await fetchSpotifyIdsMetadata(spotifyIds, token);
-          return Response.json({ ids: idsWithMetadata });
+          return Response.json({ ids: spotifyIds });
         } catch (error) {
           return Response.json({ error: "Failed to get Spotify IDs" }, { status: 500 });
         }
       },
-      POST: async (req) => {
+      POST: async (req: Request) => {
         try {
           const body = await req.json() as { ids?: string[] };
           const ids = body.ids || [];
@@ -158,20 +343,18 @@ export function createSpotifyRoutes() {
         }
       },
     },
-    // Recently played artists API
+    // Recently played artists API - returns just the list of IDs
     "/api/spotify/recent-artists": {
       GET: async () => {
         try {
           const config = await getConfig();
           const artistIds = config.spotify?.recentlyPlayedArtists || [];
-          const token = await getSpotifyToken();
-          const idsWithMetadata = await fetchSpotifyIdsMetadata(artistIds, token);
-          return Response.json({ ids: idsWithMetadata });
+          return Response.json({ ids: artistIds });
         } catch (error) {
           return Response.json({ error: "Failed to get recent artists" }, { status: 500 });
         }
       },
-      POST: async (req) => {
+      POST: async (req: Request) => {
         try {
           const body = await req.json() as { artistId?: string };
           if (!body.artistId) {
@@ -219,7 +402,7 @@ export function createSpotifyRoutes() {
     },
     // Spotify search API
     "/api/spotify/search": {
-      GET: async (req) => {
+      GET: async (req: Request) => {
         try {
           const url = new URL(req.url);
           const query = url.searchParams.get('q');
@@ -256,7 +439,7 @@ export function createSpotifyRoutes() {
     },
     // Spotify config API (POST only - credentials should never be exposed via GET)
     "/api/spotify/config": {
-      POST: async (req) => {
+      POST: async (req: Request) => {
         try {
           const body = await req.json() as { clientId?: string; clientSecret?: string };
           const config = await getConfig();
@@ -293,7 +476,7 @@ export function createSpotifyRoutes() {
           return Response.json({ error: "Failed to get recent artists limit" }, { status: 500 });
         }
       },
-      POST: async (req) => {
+      POST: async (req: Request) => {
         try {
           const body = await req.json() as { limit?: number };
           const limit = body.limit;
