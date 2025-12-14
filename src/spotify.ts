@@ -509,18 +509,23 @@ export async function handleArtistTopTracksRequest(req: Request): Promise<Respon
   }
 }
 
-// Export metadata handler for use in main server
+// Export metadata handler for use in routes
 export async function handleMetadataRequest(req: Request): Promise<Response> {
-  const url = new URL(req.url);
-  // This function should only be called for metadata paths, but double-check
-  if (!url.pathname.startsWith('/api/spotify/metadata/')) {
-    console.error('[handleMetadataRequest] Called with invalid path:', url.pathname);
-    return Response.json({ error: "Invalid metadata request path" }, { status: 400 });
+  // Extract id from req.params (Bun route syntax) or from URL as fallback
+  let id: string;
+  if ((req as any).params?.id) {
+    id = decodeURIComponent((req as any).params.id);
+  } else {
+    const url = new URL(req.url);
+    if (!url.pathname.startsWith('/api/spotify/metadata/')) {
+      console.error('[handleMetadataRequest] Called with invalid path:', url.pathname);
+      return Response.json({ error: "Invalid metadata request path" }, { status: 400 });
+    }
+    id = decodeURIComponent(url.pathname.replace('/api/spotify/metadata/', ''));
   }
   
-  const id = decodeURIComponent(url.pathname.replace('/api/spotify/metadata/', ''));
   if (!id) {
-    console.error('[handleMetadataRequest] No ID found in path:', url.pathname);
+    console.error('[handleMetadataRequest] No ID found');
     return Response.json({ error: "Missing metadata ID" }, { status: 400 });
   }
   
@@ -545,18 +550,15 @@ export async function handleMetadataRequest(req: Request): Promise<Response> {
 }
 
 export function createSpotifyRoutes() {
-  // Create a function to handle dynamic metadata routes
-  const handleMetadataRoute = async (req: Request): Promise<Response> => {
-    return await handleMetadataRequest(req) || Response.json({ error: "Invalid metadata request" }, { status: 404 });
-  };
-
   return {
-    // Spotify metadata API - dynamic route handler
-    // Note: Bun doesn't support :id syntax, so we handle it via a function
-    // that checks the path pattern. This will be called for any unmatched route
-    // but we'll add it as a specific handler in the main server.
+    // Spotify metadata API - dynamic route with :id parameter
     // Note: /api/spotify/token endpoint removed - clients no longer need it
     // All Spotify API calls go through server endpoints which automatically inject the token
+    "/api/spotify/metadata/:id": {
+      GET: async (req: Request) => {
+        return handleMetadataRequest(req);
+      },
+    },
     // Configured Spotify IDs API - returns just the list of IDs
     "/api/spotify/ids": {
       GET: async () => {
