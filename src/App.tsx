@@ -24,6 +24,13 @@ interface PlayerState {
   shuffleContext: boolean;
 }
 
+interface SpotifyIdWithArtwork {
+  id: string;
+  name: string;
+  type: string;
+  imageUrl: string;
+}
+
 const LIBRESPOT_API_URL = "http://localhost:3678";
 const LIBRESPOT_WS_URL = "ws://localhost:3678/events";
 
