@@ -1,4 +1,5 @@
 import { getConfig, setConfig, getConfigVersion, Config } from "./config";
+import { traceApiStart, traceApiEnd } from "./tracing";
 
 export async function getTheme(): Promise<string> {
   try {
@@ -103,16 +104,26 @@ export function createManagementRoutes(isKioskMode: boolean) {
     // Kiosk mode API
     "/api/kiosk": {
       GET: async () => {
-        return Response.json({ kiosk: isKioskMode });
+        const traceContext = traceApiStart('GET', '/api/kiosk', 'inbound');
+        try {
+          traceApiEnd(traceContext, 200, { kiosk: isKioskMode });
+          return Response.json({ kiosk: isKioskMode });
+        } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
+          throw error;
+        }
       },
     },
     // Config version API
     "/api/config/version": {
       GET: async () => {
+        const traceContext = traceApiStart('GET', '/api/config/version', 'inbound');
         try {
           const version = await getConfigVersion();
+          traceApiEnd(traceContext, 200, { version });
           return Response.json({ version });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to get config version" }, { status: 500 });
         }
       },
@@ -120,19 +131,25 @@ export function createManagementRoutes(isKioskMode: boolean) {
     // Hotkeys API
     "/api/hotkeys": {
       GET: async () => {
+        const traceContext = traceApiStart('GET', '/api/hotkeys', 'inbound');
         try {
           const hotkeys = await getHotkeys();
+          traceApiEnd(traceContext, 200, { hasHotkeys: !!hotkeys });
           return Response.json(hotkeys);
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to get hotkeys" }, { status: 500 });
         }
       },
       POST: async (req) => {
+        const body = await req.json() as any;
+        const traceContext = traceApiStart('POST', '/api/hotkeys', 'inbound', { hasHotkeys: !!body });
         try {
-          const body = await req.json() as any;
           await setHotkeys(body);
+          traceApiEnd(traceContext, 200, { success: true });
           return Response.json({ success: true });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to set hotkeys" }, { status: 500 });
         }
       },
@@ -140,50 +157,64 @@ export function createManagementRoutes(isKioskMode: boolean) {
     // Theme API routes
     "/api/theme": {
       GET: async () => {
+        const traceContext = traceApiStart('GET', '/api/theme', 'inbound');
         try {
           const themeName = await getTheme();
+          traceApiEnd(traceContext, 200, { theme: themeName });
           return Response.json({ theme: themeName });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to get theme" }, { status: 500 });
         }
       },
       POST: async (req) => {
+        const body = await req.json() as { theme?: string };
+        const traceContext = traceApiStart('POST', '/api/theme', 'inbound', { theme: body.theme });
         try {
-          const body = await req.json() as { theme?: string };
           const themeName = body.theme;
           
           if (!themeName) {
+            traceApiEnd(traceContext, 400, { error: "Theme name is required" });
             return Response.json({ error: "Theme name is required" }, { status: 400 });
           }
           
           await setTheme(themeName);
+          traceApiEnd(traceContext, 200, { theme: themeName });
           return Response.json({ theme: themeName });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to set theme" }, { status: 500 });
         }
       },
     },
     "/api/view": {
       GET: async () => {
+        const traceContext = traceApiStart('GET', '/api/view', 'inbound');
         try {
           const viewName = await getView();
+          traceApiEnd(traceContext, 200, { view: viewName });
           return Response.json({ view: viewName });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to get view" }, { status: 500 });
         }
       },
       POST: async (req) => {
+        const body = await req.json() as { view?: string };
+        const traceContext = traceApiStart('POST', '/api/view', 'inbound', { view: body.view });
         try {
-          const body = await req.json() as { view?: string };
           const viewName = body.view;
           
           if (!viewName) {
+            traceApiEnd(traceContext, 400, { error: "View name is required" });
             return Response.json({ error: "View name is required" }, { status: 400 });
           }
           
           await setView(viewName);
+          traceApiEnd(traceContext, 200, { view: viewName });
           return Response.json({ view: viewName });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to set view" }, { status: 500 });
         }
       },

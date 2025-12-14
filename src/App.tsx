@@ -118,22 +118,93 @@ const themes: Record<string, Theme> = {
   matrix: matrixTheme,
 };
 
-// Logging utilities
+// Client-side tracing utilities (matching server-side trace format)
+function generateTraceId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+const traceContexts = new Map<string, { startTime: number; method: string; endpoint: string }>();
+
+// Logging utilities with trace format
 const logREST = (method: string, endpoint: string, data?: any, response?: any, error?: any) => {
   const timestamp = new Date().toISOString();
+  const traceId = generateTraceId();
+  
   if (error) {
-    console.error(`[REST API] [${timestamp}] ${method} ${endpoint} - ERROR:`, error);
+    const duration = traceContexts.get(traceId) ? Date.now() - traceContexts.get(traceId)!.startTime : undefined;
+    console.error(`[TRACE] [${timestamp}] [${traceId}] ERROR: API request failed`, {
+      timestamp,
+      traceId,
+      level: 'error',
+      message: 'API request failed',
+      method,
+      path: endpoint,
+      direction: 'outbound',
+      type: 'api',
+      ...(duration !== undefined && { durationMs: duration }),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    traceContexts.delete(traceId);
   } else {
-    console.log(`[REST API] [${timestamp}] ${method} ${endpoint}`, data ? `Request: ${JSON.stringify(data)}` : '', response ? `Response: ${JSON.stringify(response)}` : '');
+    const startTime = Date.now();
+    traceContexts.set(traceId, { startTime, method, endpoint });
+    
+    if (response !== undefined) {
+      const duration = Date.now() - startTime;
+      traceContexts.delete(traceId);
+      console.log(`[TRACE] [${timestamp}] [${traceId}] INFO: API request completed`, {
+        timestamp,
+        traceId,
+        level: 'info',
+        message: 'API request completed',
+        method,
+        path: endpoint,
+        direction: 'outbound',
+        type: 'api',
+        durationMs: duration,
+        requestBody: data ? (typeof data === 'string' ? data : JSON.stringify(data)) : undefined,
+        responseBody: response ? (typeof response === 'string' ? response : JSON.stringify(response)) : undefined,
+      });
+    } else {
+      console.log(`[TRACE] [${timestamp}] [${traceId}] INFO: Outgoing API request`, {
+        timestamp,
+        traceId,
+        level: 'info',
+        message: 'Outgoing API request',
+        method,
+        path: endpoint,
+        direction: 'outbound',
+        type: 'api',
+        requestBody: data ? (typeof data === 'string' ? data : JSON.stringify(data)) : undefined,
+      });
+    }
   }
 };
 
 const logWebSocket = (event: string, data?: any, error?: any) => {
   const timestamp = new Date().toISOString();
+  const traceId = generateTraceId();
+  
   if (error) {
-    console.error(`[WebSocket] [${timestamp}] ${event} - ERROR:`, error);
+    console.error(`[TRACE] [${timestamp}] [${traceId}] ERROR: WebSocket ${event}`, {
+      timestamp,
+      traceId,
+      level: 'error',
+      message: `WebSocket ${event}`,
+      direction: 'outbound',
+      type: 'websocket',
+      error: error instanceof Error ? error.message : String(error),
+    });
   } else {
-    console.log(`[WebSocket] [${timestamp}] ${event}`, data ? JSON.stringify(data, null, 2) : '');
+    console.log(`[TRACE] [${timestamp}] [${traceId}] INFO: WebSocket ${event}`, {
+      timestamp,
+      traceId,
+      level: 'info',
+      message: `WebSocket ${event}`,
+      direction: 'outbound',
+      type: 'websocket',
+      data: data ? (typeof data === 'string' ? data : JSON.stringify(data)) : undefined,
+    });
   }
 };
 

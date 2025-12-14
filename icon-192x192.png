@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="192" height="192" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2C1810;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#1A0F08;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0D0603;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#B8860B;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" fill="url(#bg)" rx="19.200000000000003"/>
+  <!-- Vinyl record circle -->
+  <circle cx="96" cy="96" r="67.19999999999999" fill="#1a1a1a" stroke="url(#gold)" stroke-width="3.84"/>
+  <circle cx="96" cy="96" r="28.799999999999997" fill="url(#bg)"/>
+  <circle cx="96" cy="96" r="15.36" fill="url(#gold)"/>
+  <!-- Decorative lines -->
+  <line x1="96" y1="38.400000000000006" x2="96" y2="67.19999999999999" stroke="url(#gold)" stroke-width="2.88"/>
+  <line x1="96" y1="124.80000000000001" x2="96" y2="153.60000000000002" stroke="url(#gold)" stroke-width="2.88"/>
+  <line x1="38.400000000000006" y1="96" x2="67.19999999999999" y2="96" stroke="url(#gold)" stroke-width="2.88"/>
+  <line x1="124.80000000000001" y1="96" x2="153.60000000000002" y2="96" stroke="url(#gold)" stroke-width="2.88"/>
+</svg>

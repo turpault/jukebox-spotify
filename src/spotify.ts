@@ -2,6 +2,7 @@ import { getConfig, setConfig } from "./config";
 import { readFile, writeFile, mkdir, stat, unlink, readdir } from "fs/promises";
 import { join } from "path";
 import { createHash } from "crypto";
+import { traceApiStart, traceApiEnd } from "./tracing";
 
 const CACHE_DIR = "cache";
 const CACHE_DURATION = 60 * 60 * 1000 * 24 * 30; // 30 days in milliseconds
@@ -345,16 +346,42 @@ async function fetchSpotifyMetadata(id: string, token: string | null): Promise<{
 
 export function createSpotifyRoutes() {
   return {
-    // Spotify token API
-    "/api/spotify/token": {
-      GET: async () => {
+    // Spotify metadata API
+    "/api/spotify/metadata/:id": {
+      GET: async (req: Request) => {
+        const url = new URL(req.url);
+        const id = decodeURIComponent(url.pathname.split('/').pop() || '');
+        const traceContext = traceApiStart('GET', `/api/spotify/metadata/${id}`, 'inbound', { id });
         try {
           const token = await getSpotifyToken();
           if (!token) {
+            traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
+            return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
+          }
+          
+          const metadata = await fetchSpotifyMetadata(id, token);
+          traceApiEnd(traceContext, 200, { id: metadata.id, type: metadata.type, hasImage: !!metadata.imageUrl });
+          return Response.json(metadata);
+        } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
+          return Response.json({ error: "Failed to fetch metadata" }, { status: 500 });
+        }
+      },
+    },
+    // Spotify token API
+    "/api/spotify/token": {
+      GET: async () => {
+        const traceContext = traceApiStart('GET', '/api/spotify/token', 'inbound');
+        try {
+          const token = await getSpotifyToken();
+          if (!token) {
+            traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token. Check client ID and secret." });
             return Response.json({ error: "Failed to get Spotify token. Check client ID and secret." }, { status: 401 });
           }
+          traceApiEnd(traceContext, 200, { token: '[REDACTED]' });
           return Response.json({ token });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to get Spotify token" }, { status: 500 });
         }
       },
@@ -362,17 +389,21 @@ export function createSpotifyRoutes() {
     // Configured Spotify IDs API - returns just the list of IDs
     "/api/spotify/ids": {
       GET: async () => {
+        const traceContext = traceApiStart('GET', '/api/spotify/ids', 'inbound');
         try {
           const config = await getConfig();
           const spotifyIds = config.spotify?.configuredSpotifyIds || [];
+          traceApiEnd(traceContext, 200, { idsCount: spotifyIds.length });
           return Response.json({ ids: spotifyIds });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to get Spotify IDs" }, { status: 500 });
         }
       },
       POST: async (req: Request) => {
+        const body = await req.json() as { ids?: string[] };
+        const traceContext = traceApiStart('POST', '/api/spotify/ids', 'inbound', { idsCount: body.ids?.length || 0 });
         try {
-          const body = await req.json() as { ids?: string[] };
           const ids = body.ids || [];
           
           const config = await getConfig();
@@ -382,8 +413,10 @@ export function createSpotifyRoutes() {
           config.spotify.configuredSpotifyIds = ids;
           await setConfig(config);
           
+          traceApiEnd(traceContext, 200, { success: true });
           return Response.json({ success: true });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to set Spotify IDs" }, { status: 500 });
         }
       },
@@ -391,18 +424,23 @@ export function createSpotifyRoutes() {
     // Recently played artists API - returns just the list of IDs
     "/api/spotify/recent-artists": {
       GET: async () => {
+        const traceContext = traceApiStart('GET', '/api/spotify/recent-artists', 'inbound');
         try {
           const config = await getConfig();
           const artistIds = config.spotify?.recentlyPlayedArtists || [];
+          traceApiEnd(traceContext, 200, { idsCount: artistIds.length });
           return Response.json({ ids: artistIds });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to get recent artists" }, { status: 500 });
         }
       },
       POST: async (req: Request) => {
+        const body = await req.json() as { artistId?: string };
+        const traceContext = traceApiStart('POST', '/api/spotify/recent-artists', 'inbound', { artistId: body.artistId });
         try {
-          const body = await req.json() as { artistId?: string };
           if (!body.artistId) {
+            traceApiEnd(traceContext, 400, { error: "Artist ID is required" });
             return Response.json({ error: "Artist ID is required" }, { status: 400 });
           }
           
@@ -427,20 +465,25 @@ export function createSpotifyRoutes() {
             await setConfig(config);
           }
           
+          traceApiEnd(traceContext, 200, { success: true });
           return Response.json({ success: true });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to add recent artist" }, { status: 500 });
         }
       },
       DELETE: async () => {
+        const traceContext = traceApiStart('DELETE', '/api/spotify/recent-artists', 'inbound');
         try {
           const config = await getConfig();
           if (config.spotify) {
             config.spotify.recentlyPlayedArtists = [];
             await setConfig(config);
           }
+          traceApiEnd(traceContext, 200, { success: true });
           return Response.json({ success: true });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to clear recent artists" }, { status: 500 });
         }
       },
@@ -448,20 +491,23 @@ export function createSpotifyRoutes() {
     // Spotify search API
     "/api/spotify/search": {
       GET: async (req: Request) => {
+        const url = new URL(req.url);
+        const query = url.searchParams.get('q');
+        const type = url.searchParams.get('type') || 'track,album,playlist,artist';
+        const traceContext = traceApiStart('GET', '/api/spotify/search', 'inbound', { query, type });
         try {
-          const url = new URL(req.url);
-          const query = url.searchParams.get('q');
-          const type = url.searchParams.get('type') || 'track,album,playlist,artist';
-
           if (!query) {
+            traceApiEnd(traceContext, 400, { error: "Query parameter 'q' is required" });
             return Response.json({ error: "Query parameter 'q' is required" }, { status: 400 });
           }
 
           const token = await getSpotifyToken();
           if (!token) {
+            traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
             return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
           }
 
+          const spotifyTraceContext = traceApiStart('GET', 'https://api.spotify.com/v1/search', 'outbound', { query, type });
           const response = await fetch(
             `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=20`,
             {
@@ -472,12 +518,17 @@ export function createSpotifyRoutes() {
           );
 
           if (!response.ok) {
+            traceApiEnd(spotifyTraceContext, response.status, null);
+            traceApiEnd(traceContext, response.status, { error: "Spotify API error" });
             return Response.json({ error: "Spotify API error" }, { status: response.status });
           }
 
           const data = await response.json();
+          traceApiEnd(spotifyTraceContext, response.status, { resultsCount: Object.keys(data).length });
+          traceApiEnd(traceContext, 200, { resultsCount: Object.keys(data).length });
           return Response.json(data);
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to search Spotify" }, { status: 500 });
         }
       },
@@ -485,8 +536,12 @@ export function createSpotifyRoutes() {
     // Spotify config API (POST only - credentials should never be exposed via GET)
     "/api/spotify/config": {
       POST: async (req: Request) => {
+        const body = await req.json() as { clientId?: string; clientSecret?: string };
+        const traceContext = traceApiStart('POST', '/api/spotify/config', 'inbound', { 
+          hasClientId: !!body.clientId, 
+          hasClientSecret: !!body.clientSecret 
+        });
         try {
-          const body = await req.json() as { clientId?: string; clientSecret?: string };
           const config = await getConfig();
           
           if (!config.spotify) {
@@ -504,8 +559,10 @@ export function createSpotifyRoutes() {
           clearSpotifyTokenCache();
           
           await setConfig(config);
+          traceApiEnd(traceContext, 200, { success: true });
           return Response.json({ success: true });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to set Spotify config" }, { status: 500 });
         }
       },
@@ -513,20 +570,25 @@ export function createSpotifyRoutes() {
     // Recent artists limit API
     "/api/spotify/recent-artists-limit": {
       GET: async () => {
+        const traceContext = traceApiStart('GET', '/api/spotify/recent-artists-limit', 'inbound');
         try {
           const config = await getConfig();
           const limit = config.spotify?.recentArtistsLimit || 20;
+          traceApiEnd(traceContext, 200, { limit });
           return Response.json({ limit });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to get recent artists limit" }, { status: 500 });
         }
       },
       POST: async (req: Request) => {
+        const body = await req.json() as { limit?: number };
+        const traceContext = traceApiStart('POST', '/api/spotify/recent-artists-limit', 'inbound', { limit: body.limit });
         try {
-          const body = await req.json() as { limit?: number };
           const limit = body.limit;
           
           if (limit === undefined || limit < 1) {
+            traceApiEnd(traceContext, 400, { error: "Limit must be a positive number" });
             return Response.json({ error: "Limit must be a positive number" }, { status: 400 });
           }
           
@@ -537,8 +599,10 @@ export function createSpotifyRoutes() {
           config.spotify.recentArtistsLimit = limit;
           await setConfig(config);
           
+          traceApiEnd(traceContext, 200, { success: true, limit });
           return Response.json({ success: true, limit });
         } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to set recent artists limit" }, { status: 500 });
         }
       },

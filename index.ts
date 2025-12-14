@@ -5,6 +5,7 @@ import { isKioskMode, launchChromeKiosk } from "./src/kiosk";
 import { createManagementRoutes } from "./src/management";
 import { createSpotifyRoutes } from "./src/spotify";
 import { createLibrespotRoutes, createLibrespotWebSocket } from "./src/librespot";
+import { traceApiStart, traceApiEnd, traceWebSocketConnection } from "./src/tracing";
 
 // Launch Chrome in kiosk mode if enabled
 if (isKioskMode) {
@@ -21,16 +22,26 @@ const server = serve({
     
     // Handle WebSocket upgrade for /api/ws
     if (url.pathname === "/api/ws" && req.headers.get("upgrade") === "websocket") {
-      // Upgrade will be handled by the websocket handler
+      traceWebSocketConnection('open', 'inbound', { path: url.pathname });
       const upgraded = server.upgrade(req);
       if (upgraded) {
-        return undefined as any; // Return undefined to indicate upgrade
+        // Return a response to indicate successful upgrade
+        return new Response(null, { status: 101, statusText: "Switching Protocols" });
       }
+      traceWebSocketConnection('error', 'inbound', { error: "WebSocket upgrade failed" });
       return new Response("WebSocket upgrade failed", { status: 500 });
     }
     
-    // Let routes handle other requests - return undefined to fall through to routes
-    return undefined as any;
+    // Trace HTTP requests (routes will handle the actual response)
+    if (url.pathname !== "/" && url.pathname !== "/manage" && !url.pathname.startsWith("/cache/")) {
+      const traceContext = traceApiStart(req.method, url.pathname, 'inbound');
+      // Note: We can't easily trace the response here since routes handle it
+      // But we at least trace the incoming request
+    }
+    
+    // For all other requests, return a response that will be handled by routes
+    // We need to return something, but routes will handle it
+    return new Response(null, { status: 404 });
   },
   websocket: createLibrespotWebSocket(),
   routes: {
