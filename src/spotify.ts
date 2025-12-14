@@ -4,7 +4,7 @@ import { join } from "path";
 import { createHash } from "crypto";
 
 const CACHE_DIR = "cache";
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+const CACHE_DURATION = 60 * 60 * 1000 * 24 * 30; // 30 days in milliseconds
 
 let spotifyTokenCache: { token: string; expiresAt: number } | null = null;
 
@@ -110,6 +110,44 @@ async function getCachedArtworkUrl(spotifyId: string, imageUrl: string): Promise
   const cached = await cacheArtwork(spotifyId, imageUrl);
   return cached || imageUrl;
 }
+
+// Clean up expired cache files
+async function cleanupExpiredCache(): Promise<void> {
+  try {
+    await ensureCacheDir();
+    const files = await readdir(CACHE_DIR);
+    const now = Date.now();
+    
+    for (const file of files) {
+      // Only process JSON cache files (metadata), not artwork files
+      if (!file.endsWith('.json')) continue;
+      
+      try {
+        const filePath = join(CACHE_DIR, file);
+        const stats = await stat(filePath);
+        const age = now - stats.mtimeMs;
+        
+        if (age > CACHE_DURATION) {
+          await unlink(filePath);
+          console.log(`Cleaned up expired cache file: ${file}`);
+        }
+      } catch (error) {
+        // Ignore errors for individual files
+        console.error(`Error checking cache file ${file}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('Error during cache cleanup:', error);
+  }
+}
+
+// Run cache cleanup every 30 minutes
+setInterval(() => {
+  cleanupExpiredCache().catch(console.error);
+}, 30 * 60 * 1000);
+
+// Run initial cleanup on startup
+cleanupExpiredCache().catch(console.error);
 
 // Helper function to fetch with exponential backoff retry
 async function fetchWithRetry(
