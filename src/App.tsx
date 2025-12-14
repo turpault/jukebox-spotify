@@ -128,10 +128,36 @@ const logWebSocket = (event: string, data?: any, error?: any) => {
   }
 };
 
+interface HotkeyConfig {
+  keyboard: {
+    playPause?: string;
+    next?: string;
+    previous?: string;
+    volumeUp?: string;
+    volumeDown?: string;
+    seekForward?: string;
+    seekBackward?: string;
+    shuffle?: string;
+    repeat?: string;
+  };
+  gamepad: {
+    playPause?: number;
+    next?: number;
+    previous?: number;
+    volumeUp?: number;
+    volumeDown?: number;
+    shuffle?: number;
+    repeat?: number;
+  };
+  volumeStep?: number;
+  seekStep?: number;
+}
+
 export default function App() {
   const [theme, setTheme] = useState<Theme>(steampunkTheme);
   const [themeName, setThemeName] = useState<string>('steampunk');
   const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
+  const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
   
   const [playerState, setPlayerState] = useState<PlayerState>({
     isPaused: true,
@@ -149,6 +175,8 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const gamepadPollIntervalRef = useRef<number | null>(null);
+  const lastGamepadStateRef = useRef<boolean[]>([]);
 
   const apiCall = async (endpoint: string, method: string = 'GET', body?: any, useLocalApi: boolean = false) => {
     const baseUrl = useLocalApi ? '' : LIBRESPOT_API_URL;
@@ -424,6 +452,8 @@ export default function App() {
     fetchKioskMode();
     // Fetch theme on page load
     fetchTheme();
+    // Fetch hotkeys on page load
+    fetchHotkeys();
     // Fetch initial playback status on page load
     fetchPlaybackStatus();
     // Connect WebSocket for real-time updates
@@ -435,8 +465,11 @@ export default function App() {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      if (gamepadPollIntervalRef.current) {
+        clearInterval(gamepadPollIntervalRef.current);
+      }
     };
-  }, [fetchPlaybackStatus, fetchTheme, fetchKioskMode]);
+  }, [fetchPlaybackStatus, fetchTheme, fetchKioskMode, fetchHotkeys]);
 
   // Update position during playback
   useEffect(() => {
@@ -561,6 +594,128 @@ export default function App() {
     logWebSocket('User action: Toggle shuffle', { shuffle_context: newValue });
     await apiCall('/player/shuffle_context', 'POST', { shuffle_context: newValue });
   };
+
+  const adjustVolume = async (delta: number) => {
+    const newVolume = Math.max(0, Math.min(playerState.volumeMax, playerState.volume + delta));
+    await setVolume(newVolume);
+  };
+
+  const adjustSeek = async (delta: number) => {
+    const newPosition = Math.max(0, Math.min(playerState.duration, playerState.position + delta));
+    await seek(newPosition);
+  };
+
+  const fetchHotkeys = useCallback(async () => {
+    try {
+      const response = await apiCall('/api/hotkeys', 'GET', undefined, true);
+      if (response) {
+        setHotkeys(response);
+      }
+    } catch (error) {
+      console.error('Failed to fetch hotkeys:', error);
+    }
+  }, []);
+
+  // Keyboard hotkey handler
+  useEffect(() => {
+    if (!hotkeys) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger hotkeys when typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      const key = e.code || e.key;
+      const kb = hotkeys.keyboard;
+
+      if (kb.playPause && (key === kb.playPause || (kb.playPause === "Space" && key === " "))) {
+        e.preventDefault();
+        togglePlay();
+      } else if (kb.next && key === kb.next) {
+        e.preventDefault();
+        nextTrack();
+      } else if (kb.previous && key === kb.previous) {
+        e.preventDefault();
+        previousTrack();
+      } else if (kb.volumeUp && key === kb.volumeUp) {
+        e.preventDefault();
+        adjustVolume(hotkeys.volumeStep || 5);
+      } else if (kb.volumeDown && key === kb.volumeDown) {
+        e.preventDefault();
+        adjustVolume(-(hotkeys.volumeStep || 5));
+      } else if (kb.seekForward && key === kb.seekForward) {
+        e.preventDefault();
+        adjustSeek(hotkeys.seekStep || 10000);
+      } else if (kb.seekBackward && key === kb.seekBackward) {
+        e.preventDefault();
+        adjustSeek(-(hotkeys.seekStep || 10000));
+      } else if (kb.shuffle && key === kb.shuffle) {
+        e.preventDefault();
+        toggleShuffle();
+      } else if (kb.repeat && key === kb.repeat) {
+        e.preventDefault();
+        toggleRepeat();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [hotkeys, playerState.volume, playerState.volumeMax, playerState.position, playerState.duration]);
+
+  // Gamepad hotkey handler
+  useEffect(() => {
+    if (!hotkeys) return;
+
+    const pollGamepads = () => {
+      const gamepads = navigator.getGamepads();
+      if (!gamepads || gamepads.length === 0) return;
+
+      const gamepad = gamepads[0]; // Use first connected gamepad
+      if (!gamepad) return;
+
+      // Initialize last state array if needed
+      if (lastGamepadStateRef.current.length !== gamepad.buttons.length) {
+        lastGamepadStateRef.current = new Array(gamepad.buttons.length).fill(false);
+      }
+
+      const gp = hotkeys.gamepad;
+      const buttons = gamepad.buttons;
+
+      // Check each configured button
+      const checkButton = (buttonIndex: number | undefined, action: () => void) => {
+        if (buttonIndex !== undefined && buttonIndex < buttons.length) {
+          const pressed = buttons[buttonIndex].pressed;
+          const wasPressed = lastGamepadStateRef.current[buttonIndex];
+          
+          if (pressed && !wasPressed) {
+            action();
+          }
+          lastGamepadStateRef.current[buttonIndex] = pressed;
+        }
+      };
+
+      checkButton(gp.playPause, togglePlay);
+      checkButton(gp.next, nextTrack);
+      checkButton(gp.previous, previousTrack);
+      checkButton(gp.volumeUp, () => adjustVolume(hotkeys.volumeStep || 5));
+      checkButton(gp.volumeDown, () => adjustVolume(-(hotkeys.volumeStep || 5)));
+      checkButton(gp.shuffle, toggleShuffle);
+      checkButton(gp.repeat, toggleRepeat);
+    };
+
+    // Poll gamepads every 50ms
+    gamepadPollIntervalRef.current = window.setInterval(pollGamepads, 50);
+
+    return () => {
+      if (gamepadPollIntervalRef.current) {
+        clearInterval(gamepadPollIntervalRef.current);
+        gamepadPollIntervalRef.current = null;
+      }
+    };
+  }, [hotkeys, playerState.volume, playerState.volumeMax]);
 
   const formatTime = (ms: number): string => {
     if (!ms || isNaN(ms)) return '0:00';
