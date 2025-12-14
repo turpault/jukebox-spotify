@@ -29,7 +29,31 @@ function getCacheFilePath(spotifyId: string, suffix: string = 'json'): string {
 function getArtworkCachePath(spotifyId: string, imageUrl: string): string {
   const urlHash = createHash('md5').update(imageUrl).digest('hex');
   const idHash = createHash('md5').update(spotifyId).digest('hex');
-  const ext = imageUrl.split('.').pop()?.split('?')[0] || 'jpg';
+  
+  // Extract file extension from URL properly
+  // Remove query parameters first
+  const urlWithoutQuery = imageUrl.split('?')[0];
+  let ext = 'jpg'; // Default to jpg
+  
+  try {
+    // Try to parse as URL to get pathname
+    const urlObj = new URL(urlWithoutQuery);
+    const pathname = urlObj.pathname;
+    // Extract extension from pathname (last segment after last dot)
+    const pathParts = pathname.split('/');
+    const filename = pathParts[pathParts.length - 1] || '';
+    const extMatch = filename.match(/\.([a-zA-Z0-9]+)$/);
+    if (extMatch) {
+      ext = extMatch[1];
+    }
+  } catch {
+    // If URL parsing fails, try simple extraction
+    const simpleExt = urlWithoutQuery.split('.').pop();
+    if (simpleExt && simpleExt.length <= 4 && /^[a-zA-Z0-9]+$/.test(simpleExt)) {
+      ext = simpleExt;
+    }
+  }
+  
   return join(CACHE_DIR, `artwork_${idHash}_${urlHash}.${ext}`);
 }
 
