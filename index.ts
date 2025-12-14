@@ -3,7 +3,7 @@ import manageHtml from "./public/manage.html";
 import { serve } from "bun";
 import { isKioskMode, launchChromeKiosk } from "./src/kiosk";
 import { createManagementRoutes } from "./src/management";
-import { createSpotifyRoutes } from "./src/spotify";
+import { createSpotifyRoutes, handleMetadataRequest } from "./src/spotify";
 import { createLibrespotRoutes, createLibrespotWebSocket } from "./src/librespot";
 import { traceApiStart, traceApiEnd, traceWebSocketConnection } from "./src/tracing";
 
@@ -30,6 +30,14 @@ const server = serve({
       }
       traceWebSocketConnection('error', 'inbound', { error: "WebSocket upgrade failed" });
       return new Response("WebSocket upgrade failed", { status: 500 });
+    }
+    
+    // Handle metadata requests (dynamic route)
+    if (url.pathname.startsWith('/api/spotify/metadata/')) {
+      const metadataResponse = await handleMetadataRequest(req);
+      if (metadataResponse) {
+        return metadataResponse;
+      }
     }
     
     // Trace HTTP requests (routes will handle the actual response)

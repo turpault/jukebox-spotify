@@ -344,30 +344,33 @@ async function fetchSpotifyMetadata(id: string, token: string | null): Promise<{
   }
 }
 
+// Export metadata handler for use in main server
+export async function handleMetadataRequest(req: Request): Promise<Response | null> {
+  const url = new URL(req.url);
+  if (!url.pathname.startsWith('/api/spotify/metadata/')) {
+    return null;
+  }
+  
+  const id = decodeURIComponent(url.pathname.replace('/api/spotify/metadata/', ''));
+  const traceContext = traceApiStart('GET', `/api/spotify/metadata/${id}`, 'inbound', { id });
+  try {
+    const token = await getSpotifyToken();
+    if (!token) {
+      traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
+      return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
+    }
+    
+    const metadata = await fetchSpotifyMetadata(id, token);
+    traceApiEnd(traceContext, 200, { id: metadata.id, type: metadata.type, hasImage: !!metadata.imageUrl });
+    return Response.json(metadata);
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to fetch metadata" }, { status: 500 });
+  }
+}
+
 export function createSpotifyRoutes() {
   return {
-    // Spotify metadata API
-    "/api/spotify/metadata/:id": {
-      GET: async (req: Request) => {
-        const url = new URL(req.url);
-        const id = decodeURIComponent(url.pathname.split('/').pop() || '');
-        const traceContext = traceApiStart('GET', `/api/spotify/metadata/${id}`, 'inbound', { id });
-        try {
-          const token = await getSpotifyToken();
-          if (!token) {
-            traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
-            return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
-          }
-          
-          const metadata = await fetchSpotifyMetadata(id, token);
-          traceApiEnd(traceContext, 200, { id: metadata.id, type: metadata.type, hasImage: !!metadata.imageUrl });
-          return Response.json(metadata);
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to fetch metadata" }, { status: 500 });
-        }
-      },
-    },
     // Spotify token API
     "/api/spotify/token": {
       GET: async () => {
