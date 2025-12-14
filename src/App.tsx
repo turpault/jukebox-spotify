@@ -1433,7 +1433,7 @@ export default function App() {
                       }}
                     >
                       {item.imageUrl ? (
-                        <img
+                        <ImageWithBase64
                           imageUrl={item.imageUrl}
                           alt={item.name}
                           style={{
@@ -1498,7 +1498,7 @@ export default function App() {
                       }}
                     >
                       {item.imageUrl ? (
-                        <img
+                        <ImageWithBase64
                           imageUrl={item.imageUrl}
                           alt={item.name}
                           style={{
