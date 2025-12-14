@@ -1,5 +1,4 @@
-import { createRoot } from 'react-dom/client';
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface HotkeyConfig {
   keyboard: {
@@ -120,7 +119,7 @@ interface SpotifyConfig {
   clientSecret: string;
 }
 
-function Manage() {
+export default function Manage() {
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
   const [themeName, setThemeName] = useState<string>('steampunk');
   const [theme, setTheme] = useState<Theme>(steampunkTheme);
@@ -836,112 +835,120 @@ function Manage() {
               {searchResults.tracks?.items && searchResults.tracks.items.length > 0 && (
                 <div style={{ marginBottom: '30px' }}>
                   <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Tracks</h3>
-                  {searchResults.tracks.items.map((track: any) => (
-                    <div key={track.id} style={styles.actionRow}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
-                          {track.name}
+                  {searchResults.tracks.items
+                    .filter((track: any) => track && track.id && track.name)
+                    .map((track: any) => (
+                      <div key={track.id} style={styles.actionRow}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                            {track.name || 'Unknown'}
+                          </div>
+                          <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
+                            {track.artists?.map((a: any) => a?.name).filter(Boolean).join(', ') || 'Unknown'} • {track.album?.name || 'Unknown'}
+                          </div>
                         </div>
-                        <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
-                          {track.artists?.map((a: any) => a.name).join(', ')} • {track.album?.name}
-                        </div>
+                        <button
+                          onClick={() => track.uri && addSpotifyId(track.uri)}
+                          style={{
+                            ...styles.buttonSmall,
+                            ...styles.buttonSmallActive,
+                            minWidth: '60px',
+                          }}
+                        >
+                          +
+                        </button>
                       </div>
-                      <button
-                        onClick={() => addSpotifyId(track.uri)}
-                        style={{
-                          ...styles.buttonSmall,
-                          ...styles.buttonSmallActive,
-                          minWidth: '60px',
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
 
               {searchResults.albums?.items && searchResults.albums.items.length > 0 && (
                 <div style={{ marginBottom: '30px' }}>
                   <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Albums</h3>
-                  {searchResults.albums.items.map((album: any) => (
-                    <div key={album.id} style={styles.actionRow}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
-                          {album.name}
+                  {searchResults.albums.items
+                    .filter((album: any) => album && album.id && album.name)
+                    .map((album: any) => (
+                      <div key={album.id} style={styles.actionRow}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                            {album.name || 'Unknown'}
+                          </div>
+                          <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
+                            {album.artists?.map((a: any) => a?.name).filter(Boolean).join(', ') || 'Unknown'}
+                          </div>
                         </div>
-                        <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
-                          {album.artists?.map((a: any) => a.name).join(', ')}
-                        </div>
+                        <button
+                          onClick={() => album.uri && addSpotifyId(album.uri)}
+                          style={{
+                            ...styles.buttonSmall,
+                            ...styles.buttonSmallActive,
+                            minWidth: '60px',
+                          }}
+                        >
+                          +
+                        </button>
                       </div>
-                      <button
-                        onClick={() => addSpotifyId(album.uri)}
-                        style={{
-                          ...styles.buttonSmall,
-                          ...styles.buttonSmallActive,
-                          minWidth: '60px',
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
 
               {searchResults.playlists?.items && searchResults.playlists.items.length > 0 && (
                 <div style={{ marginBottom: '30px' }}>
                   <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Playlists</h3>
-                  {searchResults.playlists.items.map((playlist: any) => (
-                    <div key={playlist.id} style={styles.actionRow}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
-                          {playlist.name}
+                  {searchResults.playlists.items
+                    .filter((playlist: any) => playlist && playlist.id && playlist.name)
+                    .map((playlist: any) => (
+                      <div key={playlist.id} style={styles.actionRow}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                            {playlist.name || 'Unknown'}
+                          </div>
+                          <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
+                            by {playlist.owner?.display_name || playlist.owner?.id || 'Unknown'}
+                          </div>
                         </div>
-                        <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
-                          by {playlist.owner?.display_name || 'Unknown'}
-                        </div>
+                        <button
+                          onClick={() => playlist.uri && addSpotifyId(playlist.uri)}
+                          style={{
+                            ...styles.buttonSmall,
+                            ...styles.buttonSmallActive,
+                            minWidth: '60px',
+                          }}
+                        >
+                          +
+                        </button>
                       </div>
-                      <button
-                        onClick={() => addSpotifyId(playlist.uri)}
-                        style={{
-                          ...styles.buttonSmall,
-                          ...styles.buttonSmallActive,
-                          minWidth: '60px',
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
 
               {searchResults.artists?.items && searchResults.artists.items.length > 0 && (
                 <div style={{ marginBottom: '30px' }}>
                   <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Artists</h3>
-                  {searchResults.artists.items.map((artist: any) => (
-                    <div key={artist.id} style={styles.actionRow}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
-                          {artist.name}
+                  {searchResults.artists.items
+                    .filter((artist: any) => artist && artist.id && artist.name)
+                    .map((artist: any) => (
+                      <div key={artist.id} style={styles.actionRow}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                            {artist.name || 'Unknown'}
+                          </div>
+                          <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
+                            Artist
+                          </div>
                         </div>
-                        <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
-                          Artist
-                        </div>
+                        <button
+                          onClick={() => artist.uri && addSpotifyId(artist.uri)}
+                          style={{
+                            ...styles.buttonSmall,
+                            ...styles.buttonSmallActive,
+                            minWidth: '60px',
+                          }}
+                        >
+                          +
+                        </button>
                       </div>
-                      <button
-                        onClick={() => addSpotifyId(artist.uri)}
-                        style={{
-                          ...styles.buttonSmall,
-                          ...styles.buttonSmallActive,
-                          minWidth: '60px',
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
             </div>
