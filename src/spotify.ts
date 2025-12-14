@@ -370,7 +370,16 @@ export async function handleMetadataRequest(req: Request): Promise<Response | nu
 }
 
 export function createSpotifyRoutes() {
+  // Create a function to handle dynamic metadata routes
+  const handleMetadataRoute = async (req: Request): Promise<Response> => {
+    return await handleMetadataRequest(req) || Response.json({ error: "Invalid metadata request" }, { status: 404 });
+  };
+
   return {
+    // Spotify metadata API - dynamic route handler
+    // Note: Bun doesn't support :id syntax, so we handle it via a function
+    // that checks the path pattern. This will be called for any unmatched route
+    // but we'll add it as a specific handler in the main server.
     // Spotify token API
     "/api/spotify/token": {
       GET: async () => {

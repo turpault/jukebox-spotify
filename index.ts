@@ -32,7 +32,8 @@ const server = serve({
       return new Response("WebSocket upgrade failed", { status: 500 });
     }
     
-    // Handle metadata requests (dynamic route)
+    // Handle metadata requests (dynamic route) - must be checked before routes
+    // since routes don't support dynamic path segments
     if (url.pathname.startsWith('/api/spotify/metadata/')) {
       const metadataResponse = await handleMetadataRequest(req);
       if (metadataResponse) {
@@ -40,16 +41,9 @@ const server = serve({
       }
     }
     
-    // Trace HTTP requests (routes will handle the actual response)
-    if (url.pathname !== "/" && url.pathname !== "/manage" && !url.pathname.startsWith("/cache/")) {
-      const traceContext = traceApiStart(req.method, url.pathname, 'inbound');
-      // Note: We can't easily trace the response here since routes handle it
-      // But we at least trace the incoming request
-    }
-    
-    // For all other requests, return a response that will be handled by routes
-    // We need to return something, but routes will handle it
-    return new Response(null, { status: 404 });
+    // For all other requests, Bun will check the routes object
+    // We return undefined to let Bun process routes
+    return undefined as any;
   },
   websocket: createLibrespotWebSocket(),
   routes: {
