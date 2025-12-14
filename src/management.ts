@@ -111,7 +111,7 @@ export function createManagementRoutes(isKioskMode: boolean) {
           return Response.json({ kiosk: isKioskMode });
         } catch (error) {
           traceApiEnd(traceContext, 500, null, error);
-          throw error;
+          return Response.json({ error: "Failed to get kiosk mode" }, { status: 500 });
         }
       },
     },
