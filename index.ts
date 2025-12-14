@@ -5,7 +5,7 @@ import { join } from "path";
 import { serve } from "bun";
 import { isKioskMode, launchChromeKiosk } from "./src/kiosk";
 import { createManagementRoutes } from "./src/management";
-import { createSpotifyRoutes } from "./src/spotify";
+import { createSpotifyRoutes, handleMetadataRequest } from "./src/spotify";
 import { createLibrespotRoutes, createLibrespotWebSocket } from "./src/librespot";
 
 // Load inlined HTML for /app route (dynamically to handle build-time generation)

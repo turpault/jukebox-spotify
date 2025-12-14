@@ -21,13 +21,42 @@ async function buildInlined() {
   
   const js = readFileSync(jsPath, "utf-8");
   
-  // Add polyfills for iOS 9 compatibility before the inlined script
+  // Add minimal polyfills for iOS 9 compatibility before the inlined script
+  // Note: Most polyfills should be in the bundle, but we add basic ones as fallback
   const polyfillsScript = `  <!-- Polyfills for older browsers (iOS 9) -->
-  <script src="https://cdn.jsdelivr.net/npm/core-js@3/bundle.min.js"></script>
   <script>
-    // Polyfill for fetch API (core-js doesn't include fetch)
+    // Basic polyfills that might be needed
+    if (typeof Promise === 'undefined') {
+      // Load Promise polyfill if needed
+      var promiseScript = document.createElement('script');
+      promiseScript.src = 'https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.auto.min.js';
+      document.head.appendChild(promiseScript);
+    }
+    // Polyfill for fetch API
     if (typeof fetch === 'undefined') {
-      document.write('<script src="https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.2/dist/fetch.umd.js"><\\/script>');
+      var fetchScript = document.createElement('script');
+      fetchScript.src = 'https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.2/dist/fetch.umd.js';
+      document.head.appendChild(fetchScript);
+    }
+    // Polyfill for Object.assign
+    if (typeof Object.assign !== 'function') {
+      Object.assign = function (target) {
+        if (target == null) {
+          throw new TypeError('Cannot convert undefined or null to object');
+        }
+        var to = Object(target);
+        for (var index = 1; index < arguments.length; index++) {
+          var nextSource = arguments[index];
+          if (nextSource != null) {
+            for (var nextKey in nextSource) {
+              if (Object.prototype.hasOwnProperty.call(nextSource, nextKey)) {
+                to[nextKey] = nextSource[nextKey];
+              }
+            }
+          }
+        }
+        return to;
+      };
     }
   </script>
 `;
@@ -43,12 +72,16 @@ async function buildInlined() {
   const beforeScript = html.substring(0, scriptIndex);
   const afterScript = html.substring(scriptIndex + scriptMatch[0].length);
   
+  // Escape </script> sequences in JavaScript to prevent premature script tag closure
+  const escapedJs = js.replace(/<\/script>/gi, '<\\/script>');
+  
   // Create the inlined version with polyfills and inlined JavaScript
+  // Don't split by newlines since the bundle is minified - just inline it directly
   const inlinedHtml = beforeScript + 
     polyfillsScript +
     "  <!-- Inlined JavaScript bundle for iOS 9 compatibility -->\n" +
     "  <script>\n" +
-    js.split("\n").map(line => "    " + line).join("\n") + "\n" +
+    escapedJs + "\n" +
     "  </script>\n" +
     afterScript;
   
