@@ -555,24 +555,8 @@ export function createSpotifyRoutes() {
     // Note: Bun doesn't support :id syntax, so we handle it via a function
     // that checks the path pattern. This will be called for any unmatched route
     // but we'll add it as a specific handler in the main server.
-    // Spotify token API
-    "/api/spotify/token": {
-      GET: async () => {
-        const traceContext = traceApiStart('GET', '/api/spotify/token', 'inbound');
-        try {
-          const token = await getSpotifyToken();
-          if (!token) {
-            traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token. Check client ID and secret." });
-            return Response.json({ error: "Failed to get Spotify token. Check client ID and secret." }, { status: 401 });
-          }
-          traceApiEnd(traceContext, 200, { token: '[REDACTED]' });
-          return Response.json({ token });
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to get Spotify token" }, { status: 500 });
-        }
-      },
-    },
+    // Note: /api/spotify/token endpoint removed - clients no longer need it
+    // All Spotify API calls go through server endpoints which automatically inject the token
     // Configured Spotify IDs API - returns just the list of IDs
     "/api/spotify/ids": {
       GET: async () => {
