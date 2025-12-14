@@ -832,12 +832,12 @@ export default function Manage() {
 
           {searchResults && (
             <div>
-              {searchResults.tracks?.items && searchResults.tracks.items.length > 0 && (
-                <div style={{ marginBottom: '30px' }}>
-                  <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Tracks</h3>
-                  {searchResults.tracks.items
-                    .filter((track: any) => track && track.id && track.name)
-                    .map((track: any) => (
+              {(() => {
+                const validTracks = searchResults.tracks?.items?.filter((track: any) => track && track.id && track.name) || [];
+                return validTracks.length > 0 && (
+                  <div style={{ marginBottom: '30px' }}>
+                    <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Tracks</h3>
+                    {validTracks.map((track: any) => (
                       <div key={track.id} style={styles.actionRow}>
                         <div style={{ flex: 1 }}>
                           <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
@@ -859,15 +859,16 @@ export default function Manage() {
                         </button>
                       </div>
                     ))}
-                </div>
-              )}
+                  </div>
+                );
+              })()}
 
-              {searchResults.albums?.items && searchResults.albums.items.length > 0 && (
-                <div style={{ marginBottom: '30px' }}>
-                  <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Albums</h3>
-                  {searchResults.albums.items
-                    .filter((album: any) => album && album.id && album.name)
-                    .map((album: any) => (
+              {(() => {
+                const validAlbums = searchResults.albums?.items?.filter((album: any) => album && album.id && album.name) || [];
+                return validAlbums.length > 0 && (
+                  <div style={{ marginBottom: '30px' }}>
+                    <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Albums</h3>
+                    {validAlbums.map((album: any) => (
                       <div key={album.id} style={styles.actionRow}>
                         <div style={{ flex: 1 }}>
                           <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
@@ -889,15 +890,16 @@ export default function Manage() {
                         </button>
                       </div>
                     ))}
-                </div>
-              )}
+                  </div>
+                );
+              })()}
 
-              {searchResults.playlists?.items && searchResults.playlists.items.length > 0 && (
-                <div style={{ marginBottom: '30px' }}>
-                  <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Playlists</h3>
-                  {searchResults.playlists.items
-                    .filter((playlist: any) => playlist && playlist.id && playlist.name)
-                    .map((playlist: any) => (
+              {(() => {
+                const validPlaylists = searchResults.playlists?.items?.filter((playlist: any) => playlist && playlist.id && playlist.name) || [];
+                return validPlaylists.length > 0 && (
+                  <div style={{ marginBottom: '30px' }}>
+                    <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Playlists</h3>
+                    {validPlaylists.map((playlist: any) => (
                       <div key={playlist.id} style={styles.actionRow}>
                         <div style={{ flex: 1 }}>
                           <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
@@ -919,15 +921,16 @@ export default function Manage() {
                         </button>
                       </div>
                     ))}
-                </div>
-              )}
+                  </div>
+                );
+              })()}
 
-              {searchResults.artists?.items && searchResults.artists.items.length > 0 && (
-                <div style={{ marginBottom: '30px' }}>
-                  <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Artists</h3>
-                  {searchResults.artists.items
-                    .filter((artist: any) => artist && artist.id && artist.name)
-                    .map((artist: any) => (
+              {(() => {
+                const validArtists = searchResults.artists?.items?.filter((artist: any) => artist && artist.id && artist.name) || [];
+                return validArtists.length > 0 && (
+                  <div style={{ marginBottom: '30px' }}>
+                    <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Artists</h3>
+                    {validArtists.map((artist: any) => (
                       <div key={artist.id} style={styles.actionRow}>
                         <div style={{ flex: 1 }}>
                           <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
@@ -949,8 +952,9 @@ export default function Manage() {
                         </button>
                       </div>
                     ))}
-                </div>
-              )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

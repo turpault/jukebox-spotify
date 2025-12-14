@@ -392,19 +392,25 @@ serve({
                 const data = await response.json();
                 const name = data.name || 'Unknown';
                 let displayName = name;
+                let imageUrl = '';
 
                 if (type === 'track') {
                   const artist = data.artists?.[0]?.name || '';
                   displayName = artist ? `${name} - ${artist}` : name;
+                  imageUrl = data.album?.images?.[0]?.url || data.album?.images?.[1]?.url || '';
                 } else if (type === 'album') {
                   const artist = data.artists?.[0]?.name || '';
                   displayName = artist ? `${name} - ${artist}` : name;
+                  imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
                 } else if (type === 'playlist') {
                   const owner = data.owner?.display_name || data.owner?.id || '';
                   displayName = owner ? `${name} (by ${owner})` : name;
+                  imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
+                } else if (type === 'artist') {
+                  imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
                 }
 
-                return { id, name: displayName, type };
+                return { id, name: displayName, type, imageUrl };
               } catch (error) {
                 const parts = id.split(':');
                 return { id, name: 'Unknown', type: parts[1] || 'unknown' };

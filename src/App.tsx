@@ -158,6 +158,7 @@ export default function App() {
   const [themeName, setThemeName] = useState<string>('steampunk');
   const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
+  const [spotifyIds, setSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
   
   const [playerState, setPlayerState] = useState<PlayerState>({
     isPaused: true,
@@ -439,6 +440,41 @@ export default function App() {
     }
   }, []);
 
+  const fetchSpotifyIds = useCallback(async () => {
+    try {
+      const response = await apiCall('/api/spotify/ids', 'GET', undefined, true);
+      if (response && response.ids) {
+        setSpotifyIds(response.ids.map((item: any) => ({
+          id: item.id,
+          name: item.name || 'Unknown',
+          type: item.type || 'unknown',
+          imageUrl: item.imageUrl || '',
+        })));
+      }
+    } catch (error) {
+      console.error('Failed to fetch Spotify IDs:', error);
+    }
+  }, []);
+
+  const addToQueue = useCallback(async (spotifyId: string) => {
+    try {
+      await apiCall('/player/add_to_queue', 'POST', { uri: spotifyId });
+      const itemName = spotifyIds.find((s: SpotifyIdWithArtwork) => s.id === spotifyId)?.name || spotifyId;
+      setStatusMessage(`Added to queue: ${itemName}`);
+      setTimeout(() => {
+        setStatusMessage((prev) => {
+          if (prev.startsWith('Added to queue:')) {
+            return '';
+          }
+          return prev;
+        });
+      }, 3000);
+    } catch (error) {
+      console.error('Failed to add to queue:', error);
+      setStatusMessage(`Error adding to queue: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [spotifyIds]);
+
   const updateTheme = useCallback(async (newThemeName: string) => {
     // Update theme immediately for responsive UI
     if (themes[newThemeName]) {
@@ -465,6 +501,8 @@ export default function App() {
     fetchTheme();
     // Fetch hotkeys on page load
     fetchHotkeys();
+    // Fetch Spotify IDs on page load
+    fetchSpotifyIds();
     // Fetch initial playback status on page load
     fetchPlaybackStatus();
     // Connect WebSocket for real-time updates
@@ -480,7 +518,7 @@ export default function App() {
         clearInterval(gamepadPollIntervalRef.current);
       }
     };
-  }, [fetchPlaybackStatus, fetchTheme, fetchKioskMode, fetchHotkeys]);
+  }, [fetchPlaybackStatus, fetchTheme, fetchKioskMode, fetchHotkeys, fetchSpotifyIds]);
 
   // Update position during playback
   useEffect(() => {
@@ -803,6 +841,80 @@ export default function App() {
             <h1 style={{...styles.title, fontSize: '3rem', marginBottom: '10px'}}>Jukebox</h1>
             <p style={styles.status}>{statusMessage}</p>
           </>
+        )}
+
+        {/* Spotify ID Buttons */}
+        {spotifyIds.length > 0 && (
+          <div style={styles.spotifyIdsContainer}>
+            <h3 style={{
+              color: theme.colors.primary,
+              fontFamily: theme.fonts.title,
+              marginBottom: '20px',
+              fontSize: '1.5rem',
+              textAlign: 'center',
+            }}>Quick Add to Queue</h3>
+            <div style={styles.spotifyIdsGrid}>
+              {spotifyIds.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => addToQueue(item.id)}
+                  style={styles.spotifyIdButton}
+                  title={item.name}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                    e.currentTarget.style.boxShadow = theme.effects.shadow;
+                    const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
+                    if (overlay) overlay.style.opacity = '1';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.boxShadow = 'none';
+                    const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
+                    if (overlay) overlay.style.opacity = '0';
+                  }}
+                >
+                  {item.imageUrl ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={item.name}
+                      style={styles.spotifyIdImage}
+                      onError={(e) => {
+                        // Fallback if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          const fallback = document.createElement('div');
+                          fallback.style.cssText = `width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${theme.colors.surface}; color: ${theme.colors.text}; font-size: 0.8rem; text-align: center; padding: 10px; font-family: ${theme.fonts.primary};`;
+                          fallback.textContent = item.name;
+                          parent.appendChild(fallback);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: theme.colors.surface,
+                      color: theme.colors.text,
+                      fontSize: '0.8rem',
+                      textAlign: 'center',
+                      padding: '10px',
+                      fontFamily: theme.fonts.primary,
+                    }}>
+                      {item.name}
+                    </div>
+                  )}
+                  <div style={styles.spotifyIdOverlay} data-overlay>
+                    <div style={styles.spotifyIdName}>{item.name}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
         {playerState.isActive && playerState.currentTrack ? (
@@ -1279,6 +1391,58 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
     border: `2px solid ${theme.colors.textSecondary}`,
     borderRight: 'none',
     borderRadius: '2px 0 0 2px',
+  },
+  spotifyIdsContainer: {
+    marginBottom: '40px',
+    padding: '20px',
+    background: theme.colors.surface,
+    borderRadius: theme.effects.borderRadius,
+    border: `2px solid ${theme.colors.border}`,
+  },
+  spotifyIdsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+    gap: '20px',
+    maxWidth: '100%',
+  },
+  spotifyIdButton: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: '1',
+    padding: 0,
+    border: `2px solid ${theme.colors.border}`,
+    borderRadius: theme.effects.borderRadius,
+    background: theme.colors.surface,
+    cursor: 'pointer',
+    overflow: 'hidden',
+    transition: 'transform 0.2s, box-shadow 0.2s',
+    outline: 'none',
+  },
+  spotifyIdImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  spotifyIdOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    background: `linear-gradient(to top, ${theme.colors.surface} 0%, transparent 100%)`,
+    padding: '10px',
+    opacity: 0,
+    transition: 'opacity 0.2s',
+  },
+  spotifyIdName: {
+    color: theme.colors.text,
+    fontSize: '0.9rem',
+    fontFamily: theme.fonts.primary,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   iconVolumeWaves: {
     position: 'absolute',
