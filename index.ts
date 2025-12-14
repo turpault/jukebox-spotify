@@ -776,19 +776,8 @@ const server = serve({
         }
       },
     },
-    // Spotify config API
+    // Spotify config API (POST only - credentials should never be exposed via GET)
     "/api/spotify/config": {
-      GET: async () => {
-        try {
-          const config = await getConfig();
-          return Response.json({
-            clientId: config.spotify?.clientId || '',
-            clientSecret: config.spotify?.clientSecret || '',
-          });
-        } catch (error) {
-          return Response.json({ error: "Failed to get Spotify config" }, { status: 500 });
-        }
-      },
       POST: async (req) => {
         try {
           const body = await req.json() as { clientId?: string; clientSecret?: string };
