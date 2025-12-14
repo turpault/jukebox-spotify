@@ -1,5 +1,5 @@
 import { getConfig, setConfig } from "./config";
-import { readFile, writeFile, mkdir, stat } from "fs/promises";
+import { readFile, writeFile, mkdir, stat, unlink, readdir } from "fs/promises";
 import { join } from "path";
 import { createHash } from "crypto";
 
@@ -41,6 +41,13 @@ async function readFromCache<T>(cacheKey: string): Promise<T | null> {
     // Check if cache is expired
     const age = Date.now() - stats.mtimeMs;
     if (age > CACHE_DURATION) {
+      // Delete expired cache file
+      try {
+        await unlink(cachePath);
+        console.log(`Deleted expired cache for ${cacheKey}`);
+      } catch (error) {
+        console.error(`Failed to delete expired cache for ${cacheKey}:`, error);
+      }
       return null; // Cache expired
     }
     
