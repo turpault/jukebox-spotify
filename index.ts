@@ -21,9 +21,17 @@ async function setTheme(themeName: string): Promise<void> {
 }
 
 
+const isKioskMode = process.env.KIOSK === "1" || process.env.KIOSK === "true";
+
 serve({
   port: 3000,
   routes: {
+    // Kiosk mode API
+    "/api/kiosk": {
+      GET: async () => {
+        return Response.json({ kiosk: isKioskMode });
+      },
+    },
     // Theme API routes
     "/api/theme": {
       GET: async () => {

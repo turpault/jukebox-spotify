@@ -131,6 +131,7 @@ const logWebSocket = (event: string, data?: any, error?: any) => {
 export default function App() {
   const [theme, setTheme] = useState<Theme>(steampunkTheme);
   const [themeName, setThemeName] = useState<string>('steampunk');
+  const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
   
   const [playerState, setPlayerState] = useState<PlayerState>({
     isPaused: true,
@@ -365,6 +366,25 @@ export default function App() {
     }
   };
 
+  const fetchKioskMode = useCallback(async () => {
+    try {
+      const response = await apiCall('/api/kiosk', 'GET', undefined, true);
+      if (response && typeof response.kiosk === 'boolean') {
+        setIsKioskMode(response.kiosk);
+        if (response.kiosk) {
+          // Enter fullscreen if supported
+          if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {
+              // Ignore fullscreen errors (user may have denied permission)
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch kiosk mode:', error);
+    }
+  }, []);
+
   const fetchTheme = useCallback(async () => {
     try {
       const response = await apiCall('/api/theme', 'GET', undefined, true);
@@ -400,6 +420,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Fetch kiosk mode on page load
+    fetchKioskMode();
     // Fetch theme on page load
     fetchTheme();
     // Fetch initial playback status on page load
@@ -414,7 +436,7 @@ export default function App() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [fetchPlaybackStatus, fetchTheme]);
+  }, [fetchPlaybackStatus, fetchTheme, fetchKioskMode]);
 
   // Update position during playback
   useEffect(() => {
@@ -450,6 +472,44 @@ export default function App() {
       document.body.style.color = '';
     };
   }, [theme]);
+
+  // Kiosk mode: disable text selection and right-click
+  useEffect(() => {
+    if (isKioskMode) {
+      // Disable text selection
+      document.body.style.userSelect = 'none';
+      document.body.style.webkitUserSelect = 'none';
+      document.body.style.mozUserSelect = 'none';
+      document.body.style.msUserSelect = 'none';
+      
+      // Disable right-click context menu
+      const handleContextMenu = (e: MouseEvent) => {
+        e.preventDefault();
+        return false;
+      };
+      
+      // Disable common keyboard shortcuts that could exit kiosk mode
+      const handleKeyDown = (e: KeyboardEvent) => {
+        // Allow F11 for fullscreen toggle, but block F12 (dev tools) and Ctrl+Shift+I
+        if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) {
+          e.preventDefault();
+          return false;
+        }
+      };
+      
+      document.addEventListener('contextmenu', handleContextMenu);
+      document.addEventListener('keydown', handleKeyDown);
+      
+      return () => {
+        document.body.style.userSelect = '';
+        document.body.style.webkitUserSelect = '';
+        document.body.style.mozUserSelect = '';
+        document.body.style.msUserSelect = '';
+        document.removeEventListener('contextmenu', handleContextMenu);
+        document.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [isKioskMode]);
 
   const togglePlay = async () => {
     // Use /player/playpause endpoint as per API spec
@@ -554,32 +614,34 @@ export default function App() {
 
   return (
     <div style={styles.container}>
-      {/* Theme selector */}
-      <div style={{
-        position: 'absolute',
-        top: '20px',
-        right: '20px',
-        zIndex: 1000,
-      }}>
-        <select
-          value={themeName}
-          onChange={(e) => updateTheme(e.target.value)}
-          style={{
-            background: theme.colors.surface,
-            color: theme.colors.text,
-            border: `2px solid ${theme.colors.border}`,
-            borderRadius: theme.effects.borderRadius,
-            padding: '8px 12px',
-            fontFamily: theme.fonts.primary,
-            fontSize: '0.9rem',
-            cursor: 'pointer',
-            outline: 'none',
-          }}
-        >
-          <option value="steampunk">Steampunk 1930s</option>
-          <option value="matrix">Matrix</option>
-        </select>
-      </div>
+      {/* Theme selector - hidden in kiosk mode */}
+      {!isKioskMode && (
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          zIndex: 1000,
+        }}>
+          <select
+            value={themeName}
+            onChange={(e) => updateTheme(e.target.value)}
+            style={{
+              background: theme.colors.surface,
+              color: theme.colors.text,
+              border: `2px solid ${theme.colors.border}`,
+              borderRadius: theme.effects.borderRadius,
+              padding: '8px 12px',
+              fontFamily: theme.fonts.primary,
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            <option value="steampunk">Steampunk 1930s</option>
+            <option value="matrix">Matrix</option>
+          </select>
+        </div>
+      )}
       <div style={styles.content}>
         {!isConnected && (
           <>
