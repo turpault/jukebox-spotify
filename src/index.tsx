@@ -1,13 +1,12 @@
 import React from 'react';
-import ReactDOM from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import App from './App';
 
-// Use legacy render for iOS 9 compatibility
-// React 19 still supports ReactDOM.render for backwards compatibility
 const rootElement = document.getElementById('root');
 if (rootElement) {
-  // Always use legacy render for maximum compatibility with iOS 9
-  // ReactDOM.render is deprecated but still works in React 19
-  ReactDOM.render(React.createElement(App), rootElement);
+  // Use createRoot (React 18+ API)
+  // For iOS 9 compatibility, this will be transpiled to ES5
+  const root = createRoot(rootElement);
+  root.render(React.createElement(App));
 }
 

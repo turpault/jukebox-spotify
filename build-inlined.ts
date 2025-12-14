@@ -23,34 +23,11 @@ async function buildInlined() {
   
   // Add polyfills for iOS 9 compatibility before the inlined script
   const polyfillsScript = `  <!-- Polyfills for older browsers (iOS 9) -->
+  <script src="https://cdn.jsdelivr.net/npm/core-js@3/bundle.min.js"></script>
   <script>
-    // Polyfill for Promise (iOS 9 Safari may have limited Promise support)
-    if (typeof Promise === 'undefined') {
-      document.write('<script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.auto.min.js"><\\/script>');
-    }
-    // Polyfill for fetch API
+    // Polyfill for fetch API (core-js doesn't include fetch)
     if (typeof fetch === 'undefined') {
       document.write('<script src="https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.2/dist/fetch.umd.js"><\\/script>');
-    }
-    // Polyfill for Object.assign
-    if (typeof Object.assign !== 'function') {
-      Object.assign = function (target) {
-        if (target == null) {
-          throw new TypeError('Cannot convert undefined or null to object');
-        }
-        var to = Object(target);
-        for (var index = 1; index < arguments.length; index++) {
-          var nextSource = arguments[index];
-          if (nextSource != null) {
-            for (var nextKey in nextSource) {
-              if (Object.prototype.hasOwnProperty.call(nextSource, nextKey)) {
-                to[nextKey] = nextSource[nextKey];
-              }
-            }
-          }
-        }
-        return to;
-      };
     }
   </script>
 `;

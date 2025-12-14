@@ -9,12 +9,8 @@ module.exports = {
           ios: '9.0',
           safari: '9.0',
         },
-        useBuiltIns: 'usage',
-        corejs: {
-          version: 3,
-          proposals: false,
-        },
-        modules: false, // Keep modules as-is since we're bundling
+        useBuiltIns: false, // Don't auto-inject polyfills (we'll include core-js manually in HTML)
+        modules: false, // Keep modules as-is since we're bundling with Bun first
         debug: false,
         forceAllTransforms: true, // Force all transforms for maximum compatibility
         // Explicitly disable features that iOS 9 doesn't support
