@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "fs/promises";
+import { readFile, writeFile, stat } from "fs/promises";
+import { createHash } from "crypto";
 import indexHtml from "./public/index.html";
 import manageHtml from "./public/manage.html";
 import { serve } from "bun";
@@ -19,6 +20,45 @@ interface Config {
 }
 
 let spotifyTokenCache: { token: string; expiresAt: number } | null = null;
+
+// Get configuration version hash
+async function getConfigVersion(): Promise<string> {
+  try {
+    const hash = createHash('md5');
+    
+    // Hash theme file
+    try {
+      const themeData = await readFile(THEME_FILE, "utf-8");
+      hash.update(themeData);
+    } catch {
+      // File doesn't exist, use default
+      hash.update('steampunk');
+    }
+    
+    // Hash hotkeys file
+    try {
+      const hotkeysData = await readFile(HOTKEYS_FILE, "utf-8");
+      hash.update(hotkeysData);
+    } catch {
+      // File doesn't exist, use default
+      hash.update('{}');
+    }
+    
+    // Hash config file
+    try {
+      const configData = await readFile(CONFIG_FILE, "utf-8");
+      hash.update(configData);
+    } catch {
+      // File doesn't exist, use default
+      hash.update('{}');
+    }
+    
+    return hash.digest('hex');
+  } catch (error) {
+    // Fallback to timestamp if hashing fails
+    return Date.now().toString();
+  }
+}
 
 async function getTheme(): Promise<string> {
   try {

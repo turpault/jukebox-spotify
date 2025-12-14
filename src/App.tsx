@@ -185,6 +185,8 @@ export default function App() {
   const reconnectTimeoutRef = useRef<number | null>(null);
   const gamepadPollIntervalRef = useRef<number | null>(null);
   const lastGamepadStateRef = useRef<boolean[]>([]);
+  const configVersionRef = useRef<string | null>(null);
+  const configPollIntervalRef = useRef<number | null>(null);
 
   const apiCall = async (endpoint: string, method: string = 'GET', body?: any, useLocalApi: boolean = false) => {
     const baseUrl = useLocalApi ? '' : LIBRESPOT_API_URL;
@@ -463,6 +465,28 @@ export default function App() {
     }
   }, []);
 
+  const checkConfigVersion = useCallback(async () => {
+    try {
+      const response = await apiCall('/api/config/version', 'GET', undefined, true);
+      if (response && response.version) {
+        const currentVersion = response.version;
+        
+        // If we have a previous version and it changed, reload config
+        if (configVersionRef.current !== null && configVersionRef.current !== currentVersion) {
+          console.log('Configuration changed, reloading...');
+          // Reload all configuration
+          await fetchTheme();
+          await fetchHotkeys();
+          await fetchSpotifyIds();
+        }
+        
+        configVersionRef.current = currentVersion;
+      }
+    } catch (error) {
+      console.error('Failed to check config version:', error);
+    }
+  }, [fetchTheme, fetchHotkeys, fetchSpotifyIds]);
+
   const addToQueue = useCallback(async (spotifyId: string) => {
     try {
       await apiCall('/player/add_to_queue', 'POST', { uri: spotifyId });
@@ -524,8 +548,11 @@ export default function App() {
       if (gamepadPollIntervalRef.current) {
         clearInterval(gamepadPollIntervalRef.current);
       }
+      if (configPollIntervalRef.current) {
+        clearInterval(configPollIntervalRef.current);
+      }
     };
-  }, [fetchPlaybackStatus, fetchTheme, fetchKioskMode, fetchHotkeys, fetchSpotifyIds]);
+  }, [fetchPlaybackStatus, fetchTheme, fetchKioskMode, fetchHotkeys, fetchSpotifyIds, checkConfigVersion]);
 
   // Update position during playback
   useEffect(() => {
