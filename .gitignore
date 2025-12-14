@@ -2,6 +2,7 @@ node_modules
 dist
 public/build
 public/dist
+public/app.html
 .DS_Store
 config.json
 cache/

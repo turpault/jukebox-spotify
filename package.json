@@ -8,10 +8,11 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "bun run build-client.ts",
+    "build": "bun run build-client.ts && bun run build-inlined.ts",
     "dev": "NODE_ENV=development bun --watch index.ts",
     "start": "bun index.ts",
-    "build:client": "bun run build-client.ts"
+    "build:client": "bun run build-client.ts",
+    "build:inlined": "bun run build-inlined.ts"
   },
   "devDependencies": {
     "@babel/cli": "^7.28.3",
