@@ -166,6 +166,7 @@ export default function App() {
   const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
   const [spotifyIds, setSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
+  const [loadingSpotifyId, setLoadingSpotifyId] = useState<string | null>(null);
   
   const [playerState, setPlayerState] = useState<PlayerState>({
     isPaused: true,
@@ -518,7 +519,7 @@ export default function App() {
             headers: {
               'Authorization': `Bearer ${token}`,
             },
-          }).then(res => res.json()).then(artistData => {
+          }).then(res => res.json()).then(async (artistData) => {
             const artistName = artistData.name || 'Unknown Artist';
             const artistImageUrl = artistData.images?.[0]?.url || artistData.images?.[1]?.url || '';
 
@@ -528,14 +529,23 @@ export default function App() {
               if (exists) {
                 return prev;
               }
-              return [{
+              const newList = [{
                 id: artistUri,
                 name: artistName,
                 type: 'artist',
                 imageUrl: artistImageUrl,
               }, ...prev];
+              
+              // Persist to config.json
+              apiCall('/api/spotify/ids', 'POST', { 
+                ids: newList.map(item => item.id) 
+              }, true).catch(err => {
+                console.error('Failed to persist artist to config:', err);
+              });
+              
+              return newList;
             });
-          }).catch(err => {
+          }).catch(async (err) => {
             console.error('Failed to fetch artist details:', err);
             // Add artist anyway with minimal info
             setSpotifyIds(prev => {
@@ -543,12 +553,25 @@ export default function App() {
               if (exists) {
                 return prev;
               }
-              return [{
+              const newList = [{
                 id: artistUri,
                 name: artist.name || 'Unknown Artist',
                 type: 'artist',
                 imageUrl: '',
               }, ...prev];
+              
+              // Persist to config.json
+              (async () => {
+                try {
+                  await apiCall('/api/spotify/ids', 'POST', { 
+                    ids: newList.map(item => item.id) 
+                  }, true);
+                } catch (err) {
+                  console.error('Failed to persist artist to config:', err);
+                }
+              })();
+              
+              return newList;
             });
           });
           return prev;
@@ -557,7 +580,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to fetch artist URI:', error);
     }
-  }, []);
+  }, [apiCall]);
 
   const checkConfigVersion = useCallback(async () => {
     try {
@@ -680,6 +703,7 @@ export default function App() {
   }, []);
 
   const addToQueue = useCallback(async (spotifyId: string) => {
+    setLoadingSpotifyId(spotifyId);
     try {
       const item = spotifyIds.find((s: SpotifyIdWithArtwork) => s.id === spotifyId);
       const itemName = item?.name || spotifyId;
@@ -689,6 +713,7 @@ export default function App() {
       
       if (tracks.length === 0) {
         setStatusMessage(`No tracks found for ${itemName}`);
+        setLoadingSpotifyId(null);
         return;
       }
 
@@ -715,6 +740,8 @@ export default function App() {
     } catch (error) {
       console.error('Failed to add to queue:', error);
       setStatusMessage(`Error adding to queue: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoadingSpotifyId(null);
     }
   }, [spotifyIds, fetchTracksFromSpotifyId]);
 
@@ -1011,6 +1038,21 @@ export default function App() {
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
+  // Add spinner animation if not already in document
+  useEffect(() => {
+    if (!document.getElementById('spinner-keyframes')) {
+      const style = document.createElement('style');
+      style.id = 'spinner-keyframes';
+      style.textContent = `
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
   if (!isConnected) {
     return (
       <div style={styles.container}>
@@ -1304,7 +1346,11 @@ export default function App() {
                     <img
                       src={item.imageUrl}
                       alt={item.name}
-                      style={styles.spotifyIdImage}
+                      style={{
+                        ...styles.spotifyIdImage,
+                        opacity: loadingSpotifyId === item.id ? 0.3 : 1,
+                        filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
+                      }}
                       onError={(e) => {
                         // Fallback if image fails to load
                         const target = e.target as HTMLImageElement;
@@ -1331,6 +1377,9 @@ export default function App() {
                       textAlign: 'center',
                       padding: '10px',
                       fontFamily: theme.fonts.primary,
+                      opacity: loadingSpotifyId === item.id ? 0.3 : 1,
+                      filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
+                      transition: 'opacity 0.3s, filter 0.3s',
                     }}>
                       {item.name}
                     </div>
@@ -1410,6 +1459,7 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
     maxWidth: '800px',
     width: '100%',
     padding: '20px',
+    paddingBottom: '150px', // Add padding to prevent content from being hidden behind fixed bottom bar
     background: theme.colors.surface,
     borderRadius: theme.effects.borderRadius,
     border: `2px solid ${theme.colors.border}`,
@@ -1674,6 +1724,7 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
     height: '100%',
     objectFit: 'cover',
     display: 'block',
+    transition: 'opacity 0.3s, filter 0.3s',
   },
   spotifyIdOverlay: {
     position: 'absolute',
@@ -1694,6 +1745,30 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+  },
+  spotifyIdLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    pointerEvents: 'none',
+  },
+  spotifyIdSpinner: {
+    width: '50px',
+    height: '50px',
+    border: `5px solid ${theme.colors.border}`,
+    borderTop: `5px solid ${theme.colors.primary}`,
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+    boxShadow: theme.name === 'Matrix'
+      ? `0 0 20px ${theme.colors.primary}`
+      : `0 0 15px rgba(212, 175, 55, 0.6)`,
   },
   iconVolumeWaves: {
     position: 'absolute',
