@@ -1,4 +1,4 @@
-import { Bun } from "bun";
+// Bun is a global object, no need to import
 
 export const isKioskMode = process.env.KIOSK === "1" || process.env.KIOSK === "true";
 
