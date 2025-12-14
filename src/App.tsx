@@ -166,8 +166,13 @@ export default function App() {
   const [viewName, setViewName] = useState<string>('default');
   const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
-  const [spotifyIds, setSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
+  const [configuredSpotifyIds, setConfiguredSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
+  const [recentArtists, setRecentArtists] = useState<SpotifyIdWithArtwork[]>([]);
+  const [showRecentArtists, setShowRecentArtists] = useState<boolean>(false);
   const [loadingSpotifyId, setLoadingSpotifyId] = useState<string | null>(null);
+  
+  // Computed: which list to show
+  const spotifyIds = showRecentArtists ? recentArtists : configuredSpotifyIds;
   
   const [playerState, setPlayerState] = useState<PlayerState>({
     isPaused: true,
@@ -475,7 +480,7 @@ export default function App() {
     try {
       const response = await apiCall('/api/spotify/ids', 'GET', undefined, true);
       if (response && response.ids) {
-        setSpotifyIds(response.ids.map((item: any) => ({
+        setConfiguredSpotifyIds(response.ids.map((item: any) => ({
           id: item.id,
           name: item.name || 'Unknown',
           type: item.type || 'unknown',
@@ -484,6 +489,22 @@ export default function App() {
       }
     } catch (error) {
       console.error('Failed to fetch Spotify IDs:', error);
+    }
+  }, []);
+
+  const fetchRecentArtists = useCallback(async () => {
+    try {
+      const response = await apiCall('/api/spotify/recent-artists', 'GET', undefined, true);
+      if (response && response.ids) {
+        setRecentArtists(response.ids.map((item: any) => ({
+          id: item.id,
+          name: item.name || 'Unknown',
+          type: item.type || 'unknown',
+          imageUrl: item.imageUrl || '',
+        })));
+      }
+    } catch (error) {
+      console.error('Failed to fetch recent artists:', error);
     }
   }, []);
 
@@ -519,80 +540,16 @@ export default function App() {
         const artist = trackData.artists[0];
         const artistUri = artist.uri;
 
-        // Check if artist is already in the list
-        setSpotifyIds(prev => {
-          const exists = prev.some(item => item.id === artistUri);
-          if (exists) {
-            return prev;
-          }
-
-          // Fetch artist details for display
-          fetch(`https://api.spotify.com/v1/artists/${artist.id}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          }).then(res => res.json()).then(async (artistData) => {
-            const artistName = artistData.name || 'Unknown Artist';
-            const artistImageUrl = artistData.images?.[0]?.url || artistData.images?.[1]?.url || '';
-
-            // Add artist to the beginning of the list
-            setSpotifyIds(prev => {
-              const exists = prev.some(item => item.id === artistUri);
-              if (exists) {
-                return prev;
-              }
-              const newList = [{
-                id: artistUri,
-                name: artistName,
-                type: 'artist',
-                imageUrl: artistImageUrl,
-              }, ...prev];
-              
-              // Persist to config.json
-              apiCall('/api/spotify/ids', 'POST', { 
-                ids: newList.map(item => item.id) 
-              }, true).catch(err => {
-                console.error('Failed to persist artist to config:', err);
-              });
-              
-              return newList;
-            });
-          }).catch(async (err) => {
-            console.error('Failed to fetch artist details:', err);
-            // Add artist anyway with minimal info
-            setSpotifyIds(prev => {
-              const exists = prev.some(item => item.id === artistUri);
-              if (exists) {
-                return prev;
-              }
-              const newList = [{
-                id: artistUri,
-                name: artist.name || 'Unknown Artist',
-                type: 'artist',
-                imageUrl: '',
-              }, ...prev];
-              
-              // Persist to config.json
-              (async () => {
-                try {
-                  await apiCall('/api/spotify/ids', 'POST', { 
-                    ids: newList.map(item => item.id) 
-                  }, true);
-                } catch (err) {
-                  console.error('Failed to persist artist to config:', err);
-                }
-              })();
-              
-              return newList;
-            });
-          });
-          return prev;
-        });
+        // Add to recent artists via API (which will handle deduplication and persistence)
+        await apiCall('/api/spotify/recent-artists', 'POST', { artistId: artistUri }, true);
+        
+        // Refresh the recent artists list
+        await fetchRecentArtists();
       }
     } catch (error) {
-      console.error('Failed to fetch artist URI:', error);
+      console.error('Error fetching track artist URI:', error);
     }
-  }, [apiCall]);
+  }, [apiCall, fetchRecentArtists]);
 
   const checkConfigVersion = useCallback(async () => {
     try {
@@ -608,6 +565,7 @@ export default function App() {
           await fetchView();
           await fetchHotkeys();
           await fetchSpotifyIds();
+          await fetchRecentArtists();
         }
         
         configVersionRef.current = currentVersion;
@@ -788,6 +746,8 @@ export default function App() {
     fetchHotkeys();
     // Fetch Spotify IDs on page load
     fetchSpotifyIds();
+    // Fetch recent artists on page load
+    fetchRecentArtists();
     // Fetch initial playback status on page load
     fetchPlaybackStatus();
     // Connect WebSocket for real-time updates
@@ -806,7 +766,7 @@ export default function App() {
         clearInterval(configPollIntervalRef.current);
       }
     };
-  }, [fetchPlaybackStatus, fetchTheme, fetchView, fetchKioskMode, fetchHotkeys, fetchSpotifyIds, checkConfigVersion]);
+  }, [fetchPlaybackStatus, fetchTheme, fetchView, fetchKioskMode, fetchHotkeys, fetchSpotifyIds, fetchRecentArtists, checkConfigVersion]);
 
   // Update position during playback
   useEffect(() => {
@@ -1339,8 +1299,61 @@ export default function App() {
         )}
 
         {/* Spotify ID Buttons - Horizontal Scrollable at Bottom - hidden in dash view */}
-        {viewName !== 'dash' && spotifyIds.length > 0 && (
+        {viewName !== 'dash' && (configuredSpotifyIds.length > 0 || recentArtists.length > 0) && (
           <div style={styles.spotifyIdsContainer}>
+            {/* Toggle between configured and recent artists */}
+            {(configuredSpotifyIds.length > 0 && recentArtists.length > 0) && (
+              <div style={{
+                display: 'flex',
+                gap: '10px',
+                padding: '10px 20px',
+                background: theme.colors.surface,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}>
+                <button
+                  onClick={() => setShowRecentArtists(false)}
+                  style={{
+                    padding: '8px 16px',
+                    background: !showRecentArtists 
+                      ? `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.secondary} 100%)`
+                      : theme.colors.surface,
+                    border: `2px solid ${theme.colors.border}`,
+                    borderRadius: theme.effects.borderRadius,
+                    color: !showRecentArtists 
+                      ? (theme.name === 'Matrix' ? '#000000' : '#2C1810')
+                      : theme.colors.text,
+                    cursor: 'pointer',
+                    fontFamily: theme.fonts.primary,
+                    fontSize: '0.9rem',
+                    fontWeight: !showRecentArtists ? 'bold' : 'normal',
+                  }}
+                >
+                  Configured ({configuredSpotifyIds.length})
+                </button>
+                <button
+                  onClick={() => setShowRecentArtists(true)}
+                  style={{
+                    padding: '8px 16px',
+                    background: showRecentArtists 
+                      ? `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.secondary} 100%)`
+                      : theme.colors.surface,
+                    border: `2px solid ${theme.colors.border}`,
+                    borderRadius: theme.effects.borderRadius,
+                    color: showRecentArtists 
+                      ? (theme.name === 'Matrix' ? '#000000' : '#2C1810')
+                      : theme.colors.text,
+                    cursor: 'pointer',
+                    fontFamily: theme.fonts.primary,
+                    fontSize: '0.9rem',
+                    fontWeight: showRecentArtists ? 'bold' : 'normal',
+                  }}
+                >
+                  Recent Artists ({recentArtists.length})
+                </button>
+              </div>
+            )}
             <div style={styles.spotifyIdsScroll}>
               {spotifyIds.map((item) => (
                 <button

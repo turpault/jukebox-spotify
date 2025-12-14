@@ -37,7 +37,9 @@ interface Config {
   spotify?: {
     clientId?: string;
     clientSecret?: string;
-    spotifyIds?: string[];
+    configuredSpotifyIds?: string[];
+    recentlyPlayedArtists?: string[];
+    recentArtistsLimit?: number;
   };
 }
 
@@ -366,6 +368,63 @@ async function launchChromeKiosk() {
   }
 }
 
+// Helper function to fetch metadata for Spotify IDs
+async function fetchSpotifyIdsMetadata(ids: string[], token: string | null) {
+  if (!token) {
+    return ids.map(id => ({ id, name: 'Unknown', type: 'unknown', imageUrl: '' }));
+  }
+
+  return Promise.all(
+    ids.map(async (id: string) => {
+      try {
+        const parts = id.split(':');
+        if (parts.length < 3 || parts[0] !== 'spotify') {
+          return { id, name: 'Invalid URI', type: 'unknown', imageUrl: '' };
+        }
+
+        const type = parts[1];
+        const spotifyId = parts[2];
+
+        const response = await fetch(`https://api.spotify.com/v1/${type}s/${spotifyId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          return { id, name: 'Unknown', type, imageUrl: '' };
+        }
+
+        const data = await response.json();
+        const name = data.name || 'Unknown';
+        let displayName = name;
+        let imageUrl = '';
+
+        if (type === 'track') {
+          const artist = data.artists?.[0]?.name || '';
+          displayName = artist ? `${name} - ${artist}` : name;
+          imageUrl = data.album?.images?.[0]?.url || data.album?.images?.[1]?.url || '';
+        } else if (type === 'album') {
+          const artist = data.artists?.[0]?.name || '';
+          displayName = artist ? `${name} - ${artist}` : name;
+          imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
+        } else if (type === 'playlist') {
+          const owner = data.owner?.display_name || data.owner?.id || '';
+          displayName = owner ? `${name} (by ${owner})` : name;
+          imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
+        } else if (type === 'artist') {
+          imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
+        }
+
+        return { id, name: displayName, type, imageUrl };
+      } catch (error) {
+        const parts = id.split(':');
+        return { id, name: 'Unknown', type: parts[1] || 'unknown', imageUrl: '' };
+      }
+    })
+  );
+}
+
 // Launch Chrome in kiosk mode if enabled
 if (isKioskMode) {
   // Wait a moment for server to start, then launch Chrome
@@ -468,71 +527,14 @@ serve({
         }
       },
     },
-    // Spotify IDs API
+    // Configured Spotify IDs API
     "/api/spotify/ids": {
       GET: async () => {
         try {
           const config = await getConfig();
-          const spotifyIds = config.spotify?.spotifyIds || [];
-          
-          // Get token and fetch metadata for each ID
+          const spotifyIds = config.spotify?.configuredSpotifyIds || [];
           const token = await getSpotifyToken();
-          if (!token) {
-            return Response.json({ ids: spotifyIds.map(id => ({ id, name: 'Unknown', type: 'unknown' })) });
-          }
-
-          // Fetch metadata for all IDs
-          const idsWithMetadata = await Promise.all(
-            spotifyIds.map(async (id: string) => {
-              try {
-                // Parse Spotify URI: spotify:track:xxx or spotify:album:xxx
-                const parts = id.split(':');
-                if (parts.length < 3 || parts[0] !== 'spotify') {
-                  return { id, name: 'Invalid URI', type: 'unknown' };
-                }
-
-                const type = parts[1]; // track, album, playlist, artist
-                const spotifyId = parts[2]; // The actual ID
-
-                const response = await fetch(`https://api.spotify.com/v1/${type}s/${spotifyId}`, {
-                  headers: {
-                    'Authorization': `Bearer ${token}`,
-                  },
-                });
-
-                if (!response.ok) {
-                  return { id, name: 'Unknown', type };
-                }
-
-                const data = await response.json();
-                const name = data.name || 'Unknown';
-                let displayName = name;
-                let imageUrl = '';
-
-                if (type === 'track') {
-                  const artist = data.artists?.[0]?.name || '';
-                  displayName = artist ? `${name} - ${artist}` : name;
-                  imageUrl = data.album?.images?.[0]?.url || data.album?.images?.[1]?.url || '';
-                } else if (type === 'album') {
-                  const artist = data.artists?.[0]?.name || '';
-                  displayName = artist ? `${name} - ${artist}` : name;
-                  imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
-                } else if (type === 'playlist') {
-                  const owner = data.owner?.display_name || data.owner?.id || '';
-                  displayName = owner ? `${name} (by ${owner})` : name;
-                  imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
-                } else if (type === 'artist') {
-                  imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
-                }
-
-                return { id, name: displayName, type, imageUrl };
-              } catch (error) {
-                const parts = id.split(':');
-                return { id, name: 'Unknown', type: parts[1] || 'unknown' };
-              }
-            })
-          );
-
+          const idsWithMetadata = await fetchSpotifyIdsMetadata(spotifyIds, token);
           return Response.json({ ids: idsWithMetadata });
         } catch (error) {
           return Response.json({ error: "Failed to get Spotify IDs" }, { status: 500 });
@@ -547,12 +549,71 @@ serve({
           if (!config.spotify) {
             config.spotify = {};
           }
-          config.spotify.spotifyIds = ids;
+          config.spotify.configuredSpotifyIds = ids;
           await setConfig(config);
           
           return Response.json({ success: true });
         } catch (error) {
           return Response.json({ error: "Failed to set Spotify IDs" }, { status: 500 });
+        }
+      },
+    },
+    // Recently played artists API
+    "/api/spotify/recent-artists": {
+      GET: async () => {
+        try {
+          const config = await getConfig();
+          const artistIds = config.spotify?.recentlyPlayedArtists || [];
+          const token = await getSpotifyToken();
+          const idsWithMetadata = await fetchSpotifyIdsMetadata(artistIds, token);
+          return Response.json({ ids: idsWithMetadata });
+        } catch (error) {
+          return Response.json({ error: "Failed to get recent artists" }, { status: 500 });
+        }
+      },
+      POST: async (req) => {
+        try {
+          const body = await req.json() as { artistId?: string };
+          if (!body.artistId) {
+            return Response.json({ error: "Artist ID is required" }, { status: 400 });
+          }
+          
+          const config = await getConfig();
+          if (!config.spotify) {
+            config.spotify = {};
+          }
+          if (!config.spotify.recentlyPlayedArtists) {
+            config.spotify.recentlyPlayedArtists = [];
+          }
+          
+          // Add to beginning if not already present
+          const artistIds = config.spotify.recentlyPlayedArtists;
+          if (!artistIds.includes(body.artistId)) {
+            artistIds.unshift(body.artistId);
+            // Limit to configured limit (default 20)
+            const limit = config.spotify.recentArtistsLimit || 20;
+            if (artistIds.length > limit) {
+              artistIds.splice(limit);
+            }
+            config.spotify.recentlyPlayedArtists = artistIds;
+            await setConfig(config);
+          }
+          
+          return Response.json({ success: true });
+        } catch (error) {
+          return Response.json({ error: "Failed to add recent artist" }, { status: 500 });
+        }
+      },
+      DELETE: async () => {
+        try {
+          const config = await getConfig();
+          if (config.spotify) {
+            config.spotify.recentlyPlayedArtists = [];
+            await setConfig(config);
+          }
+          return Response.json({ success: true });
+        } catch (error) {
+          return Response.json({ error: "Failed to clear recent artists" }, { status: 500 });
         }
       },
     },
@@ -629,6 +690,39 @@ serve({
           return Response.json({ success: true });
         } catch (error) {
           return Response.json({ error: "Failed to set Spotify config" }, { status: 500 });
+        }
+      },
+    },
+    // Recent artists limit API
+    "/api/spotify/recent-artists-limit": {
+      GET: async () => {
+        try {
+          const config = await getConfig();
+          const limit = config.spotify?.recentArtistsLimit || 20;
+          return Response.json({ limit });
+        } catch (error) {
+          return Response.json({ error: "Failed to get recent artists limit" }, { status: 500 });
+        }
+      },
+      POST: async (req) => {
+        try {
+          const body = await req.json() as { limit?: number };
+          const limit = body.limit;
+          
+          if (limit === undefined || limit < 1) {
+            return Response.json({ error: "Limit must be a positive number" }, { status: 400 });
+          }
+          
+          const config = await getConfig();
+          if (!config.spotify) {
+            config.spotify = {};
+          }
+          config.spotify.recentArtistsLimit = limit;
+          await setConfig(config);
+          
+          return Response.json({ success: true, limit });
+        } catch (error) {
+          return Response.json({ error: "Failed to set recent artists limit" }, { status: 500 });
         }
       },
     },

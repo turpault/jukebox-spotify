@@ -114,11 +114,6 @@ interface SpotifyId {
   type: string;
 }
 
-interface SpotifyConfig {
-  clientId: string;
-  clientSecret: string;
-}
-
 export default function Manage() {
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
   const [themeName, setThemeName] = useState<string>('steampunk');
@@ -129,7 +124,8 @@ export default function Manage() {
   const [capturingKey, setCapturingKey] = useState<string | null>(null);
   const [capturingButton, setCapturingButton] = useState<string | null>(null);
   const [spotifyIds, setSpotifyIds] = useState<SpotifyId[]>([]);
-  const [spotifyConfig, setSpotifyConfig] = useState<SpotifyConfig>({ clientId: '', clientSecret: '' });
+  const [recentArtists, setRecentArtists] = useState<SpotifyId[]>([]);
+  const [recentArtistsLimit, setRecentArtistsLimit] = useState<number>(20);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<any>(null);
   const [searching, setSearching] = useState(false);
@@ -187,32 +183,81 @@ export default function Manage() {
     }
   }, []);
 
-  const fetchSpotifyConfig = useCallback(async () => {
+  const fetchRecentArtists = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/spotify/config`);
+      const response = await fetch(`${API_BASE}/api/spotify/recent-artists`);
       const data = await response.json();
-      if (data) {
-        setSpotifyConfig({
-          clientId: data.clientId || '',
-          clientSecret: data.clientSecret || '',
-        });
+      if (data && data.ids) {
+        setRecentArtists(data.ids);
       }
     } catch (error) {
-      console.error('Failed to fetch Spotify config:', error);
+      console.error('Failed to fetch recent artists:', error);
     }
   }, []);
+
+  const clearRecentArtists = async () => {
+    setSaving(true);
+    setMessage('');
+    try {
+      const response = await fetch(`${API_BASE}/api/spotify/recent-artists`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.success) {
+        setMessage('Recent artists cleared successfully!');
+        await fetchRecentArtists();
+      } else {
+        setMessage('Failed to clear recent artists');
+      }
+    } catch (error) {
+      setMessage('Error clearing recent artists');
+      console.error(error);
+    } finally {
+      setSaving(false);
+      setTimeout(() => setMessage(''), 3000);
+    }
+  };
+
+  const fetchRecentArtistsLimit = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/spotify/recent-artists-limit`);
+      const data = await response.json();
+      if (data && data.limit) {
+        setRecentArtistsLimit(data.limit);
+      }
+    } catch (error) {
+      console.error('Failed to fetch recent artists limit:', error);
+    }
+  }, []);
+
+  const saveRecentArtistsLimit = async (limit: number) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/spotify/recent-artists-limit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        console.error('Failed to save recent artists limit');
+      }
+    } catch (error) {
+      console.error('Error saving recent artists limit:', error);
+    }
+  };
 
   useEffect(() => {
     fetchHotkeys();
     fetchTheme();
     fetchView();
     fetchSpotifyIds();
-    fetchSpotifyConfig();
+    fetchRecentArtists();
+    fetchRecentArtistsLimit();
     // Mark initial load as complete after a short delay
     setTimeout(() => {
       isInitialLoad.current = false;
     }, 1000);
-  }, [fetchHotkeys, fetchTheme, fetchView, fetchSpotifyIds, fetchSpotifyConfig]);
+  }, [fetchHotkeys, fetchTheme, fetchView, fetchSpotifyIds, fetchRecentArtists, fetchRecentArtistsLimit]);
 
   const saveHotkeys = async (hotkeysToSave: HotkeyConfig) => {
     try {
@@ -330,31 +375,6 @@ export default function Manage() {
     window.addEventListener('keydown', handler);
   };
 
-  const saveSpotifyConfig = async () => {
-    setSaving(true);
-    setMessage('');
-    try {
-      const response = await fetch(`${API_BASE}/api/spotify/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(spotifyConfig),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setMessage('Spotify config saved successfully!');
-        // Refresh IDs to get updated metadata
-        fetchSpotifyIds();
-      } else {
-        setMessage('Failed to save Spotify config');
-      }
-    } catch (error) {
-      setMessage('Error saving Spotify config');
-      console.error(error);
-    } finally {
-      setSaving(false);
-      setTimeout(() => setMessage(''), 3000);
-    }
-  };
 
   const searchSpotify = async () => {
     if (!searchQuery.trim()) return;
@@ -642,10 +662,10 @@ export default function Manage() {
           gap: '40px',
           marginBottom: '40px',
         }}>
-          {/* Theme Configuration */}
+          {/* Theme & View Configuration */}
           <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Theme</h2>
-            <div>
+            <h2 style={styles.cardTitle}>Theme & View</h2>
+            <div style={{ marginBottom: '20px' }}>
               <label style={styles.label}>
                 Select Theme:
               </label>
@@ -658,12 +678,7 @@ export default function Manage() {
                 <option value="matrix">Matrix</option>
               </select>
             </div>
-          </div>
-
-          {/* Settings */}
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Settings</h2>
-            <div style={{ marginBottom: '20px' }}>
+            <div>
               <label style={styles.label}>
                 Select View:
               </label>
@@ -676,6 +691,11 @@ export default function Manage() {
                 <option value="dash">Dash (Track Only)</option>
               </select>
             </div>
+          </div>
+
+          {/* Settings */}
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Settings</h2>
             {hotkeys && (
               <>
                 <div style={{ marginBottom: '15px' }}>
@@ -770,53 +790,13 @@ export default function Manage() {
           </div>
         </div>
 
-        {/* Spotify Configuration */}
+        {/* Configured Spotify IDs */}
         <div style={{ ...styles.card, marginBottom: '40px' }}>
-          <h2 style={styles.cardTitle}>Spotify Configuration</h2>
-          <div style={{ marginBottom: '15px' }}>
-            <label style={{ ...styles.label, marginBottom: '5px' }}>
-              Client ID:
-            </label>
-            <input
-              type="text"
-              value={spotifyConfig.clientId}
-              onChange={(e) => setSpotifyConfig({ ...spotifyConfig, clientId: e.target.value })}
-              style={styles.input}
-              placeholder="Spotify Client ID"
-            />
-          </div>
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ ...styles.label, marginBottom: '5px' }}>
-              Client Secret:
-            </label>
-            <input
-              type="password"
-              value={spotifyConfig.clientSecret}
-              onChange={(e) => setSpotifyConfig({ ...spotifyConfig, clientSecret: e.target.value })}
-              style={styles.input}
-              placeholder="Spotify Client Secret"
-            />
-          </div>
-          <button
-            onClick={saveSpotifyConfig}
-            disabled={saving}
-            style={{
-              ...styles.button,
-              width: '100%',
-              ...(saving ? styles.buttonDisabled : {}),
-            }}
-          >
-            {saving ? 'Saving...' : 'Save Spotify Config'}
-          </button>
-        </div>
-
-        {/* Saved Spotify IDs */}
-        <div style={{ ...styles.card, marginBottom: '40px' }}>
-          <h2 style={styles.cardTitle}>Saved Spotify IDs</h2>
+          <h2 style={styles.cardTitle}>Configured Spotify IDs</h2>
           {spotifyIds.length === 0 ? (
-            <p style={styles.helpText}>No Spotify IDs saved. Use search below to add some.</p>
+            <p style={styles.helpText}>No Spotify IDs configured. Use search below to add some.</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '30px' }}>
               {spotifyIds.map((item) => (
                 <div key={item.id} style={styles.actionRow}>
                   <div style={{ flex: 1 }}>
@@ -842,164 +822,221 @@ export default function Manage() {
               ))}
             </div>
           )}
+
+          {/* Spotify Search */}
+          <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '30px', marginTop: '30px' }}>
+            <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '20px' }}>Search Spotify</h3>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    searchSpotify();
+                  }
+                }}
+                style={{ ...styles.input, flex: 1 }}
+                placeholder="Search for tracks, albums, playlists, artists..."
+              />
+              <button
+                onClick={searchSpotify}
+                disabled={searching || !searchQuery.trim()}
+                style={{
+                  ...styles.button,
+                  ...(searching || !searchQuery.trim() ? styles.buttonDisabled : {}),
+                }}
+              >
+                {searching ? 'Searching...' : 'Search'}
+              </button>
+            </div>
+
+            {searchResults && (
+              <div>
+                {(() => {
+                  const validTracks = searchResults.tracks?.items?.filter((track: any) => track && track.id && track.name) || [];
+                  return validTracks.length > 0 && (
+                    <div style={{ marginBottom: '30px' }}>
+                      <h4 style={{ ...styles.cardTitle, fontSize: '1.1rem', marginBottom: '15px' }}>Tracks</h4>
+                      {validTracks.map((track: any) => (
+                        <div key={track.id} style={styles.actionRow}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                              {track.name || 'Unknown'}
+                            </div>
+                            <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
+                              {track.artists?.map((a: any) => a?.name).filter(Boolean).join(', ') || 'Unknown'} • {track.album?.name || 'Unknown'}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => track.uri && addSpotifyId(track.uri)}
+                            style={{
+                              ...styles.buttonSmall,
+                              ...styles.buttonSmallActive,
+                              minWidth: '60px',
+                            }}
+                          >
+                            +
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {(() => {
+                  const validAlbums = searchResults.albums?.items?.filter((album: any) => album && album.id && album.name) || [];
+                  return validAlbums.length > 0 && (
+                    <div style={{ marginBottom: '30px' }}>
+                      <h4 style={{ ...styles.cardTitle, fontSize: '1.1rem', marginBottom: '15px' }}>Albums</h4>
+                      {validAlbums.map((album: any) => (
+                        <div key={album.id} style={styles.actionRow}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                              {album.name || 'Unknown'}
+                            </div>
+                            <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
+                              {album.artists?.map((a: any) => a?.name).filter(Boolean).join(', ') || 'Unknown'}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => album.uri && addSpotifyId(album.uri)}
+                            style={{
+                              ...styles.buttonSmall,
+                              ...styles.buttonSmallActive,
+                              minWidth: '60px',
+                            }}
+                          >
+                            +
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {(() => {
+                  const validPlaylists = searchResults.playlists?.items?.filter((playlist: any) => playlist && playlist.id && playlist.name) || [];
+                  return validPlaylists.length > 0 && (
+                    <div style={{ marginBottom: '30px' }}>
+                      <h4 style={{ ...styles.cardTitle, fontSize: '1.1rem', marginBottom: '15px' }}>Playlists</h4>
+                      {validPlaylists.map((playlist: any) => (
+                        <div key={playlist.id} style={styles.actionRow}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                              {playlist.name || 'Unknown'}
+                            </div>
+                            <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
+                              by {playlist.owner?.display_name || playlist.owner?.id || 'Unknown'}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => playlist.uri && addSpotifyId(playlist.uri)}
+                            style={{
+                              ...styles.buttonSmall,
+                              ...styles.buttonSmallActive,
+                              minWidth: '60px',
+                            }}
+                          >
+                            +
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {(() => {
+                  const validArtists = searchResults.artists?.items?.filter((artist: any) => artist && artist.id && artist.name) || [];
+                  return validArtists.length > 0 && (
+                    <div style={{ marginBottom: '30px' }}>
+                      <h4 style={{ ...styles.cardTitle, fontSize: '1.1rem', marginBottom: '15px' }}>Artists</h4>
+                      {validArtists.map((artist: any) => (
+                        <div key={artist.id} style={styles.actionRow}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                              {artist.name || 'Unknown'}
+                            </div>
+                            <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
+                              Artist
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => artist.uri && addSpotifyId(artist.uri)}
+                            style={{
+                              ...styles.buttonSmall,
+                              ...styles.buttonSmallActive,
+                              minWidth: '60px',
+                            }}
+                          >
+                            +
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Spotify Search */}
+        {/* Recently Played Artists */}
         <div style={{ ...styles.card, marginBottom: '40px' }}>
-          <h2 style={styles.cardTitle}>Search Spotify</h2>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  searchSpotify();
-                }
-              }}
-              style={{ ...styles.input, flex: 1 }}
-              placeholder="Search for tracks, albums, playlists, artists..."
-            />
-            <button
-              onClick={searchSpotify}
-              disabled={searching || !searchQuery.trim()}
-              style={{
-                ...styles.button,
-                ...(searching || !searchQuery.trim() ? styles.buttonDisabled : {}),
-              }}
-            >
-              {searching ? 'Searching...' : 'Search'}
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={styles.cardTitle}>Recently Played Artists</h2>
+            {recentArtists.length > 0 && (
+              <button
+                onClick={clearRecentArtists}
+                disabled={saving}
+                style={{
+                  ...styles.buttonSmall,
+                  background: 'rgba(200, 0, 0, 0.3)',
+                  border: '2px solid #FF0000',
+                  color: '#FF0000',
+                  ...(saving ? styles.buttonDisabled : {}),
+                }}
+              >
+                {saving ? 'Clearing...' : 'Clear All'}
+              </button>
+            )}
           </div>
-
-          {searchResults && (
-            <div>
-              {(() => {
-                const validTracks = searchResults.tracks?.items?.filter((track: any) => track && track.id && track.name) || [];
-                return validTracks.length > 0 && (
-                  <div style={{ marginBottom: '30px' }}>
-                    <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Tracks</h3>
-                    {validTracks.map((track: any) => (
-                      <div key={track.id} style={styles.actionRow}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
-                            {track.name || 'Unknown'}
-                          </div>
-                          <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
-                            {track.artists?.map((a: any) => a?.name).filter(Boolean).join(', ') || 'Unknown'} • {track.album?.name || 'Unknown'}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => track.uri && addSpotifyId(track.uri)}
-                          style={{
-                            ...styles.buttonSmall,
-                            ...styles.buttonSmallActive,
-                            minWidth: '60px',
-                          }}
-                        >
-                          +
-                        </button>
-                      </div>
-                    ))}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ ...styles.label, marginBottom: '5px' }}>
+              Recent Artists Limit:
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={recentArtistsLimit}
+              onChange={(e) => {
+                const limit = parseInt(e.target.value) || 20;
+                setRecentArtistsLimit(limit);
+                saveRecentArtistsLimit(limit);
+              }}
+              style={styles.input}
+            />
+          </div>
+          {recentArtists.length === 0 ? (
+            <p style={styles.helpText}>No recently played artists. Artists will be added automatically when tracks are played.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {recentArtists.map((item) => (
+                <div key={item.id} style={styles.actionRow}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
+                      {item.name}
+                    </div>
+                    <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
+                      {item.type} • {item.id}
+                    </div>
                   </div>
-                );
-              })()}
-
-              {(() => {
-                const validAlbums = searchResults.albums?.items?.filter((album: any) => album && album.id && album.name) || [];
-                return validAlbums.length > 0 && (
-                  <div style={{ marginBottom: '30px' }}>
-                    <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Albums</h3>
-                    {validAlbums.map((album: any) => (
-                      <div key={album.id} style={styles.actionRow}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
-                            {album.name || 'Unknown'}
-                          </div>
-                          <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
-                            {album.artists?.map((a: any) => a?.name).filter(Boolean).join(', ') || 'Unknown'}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => album.uri && addSpotifyId(album.uri)}
-                          style={{
-                            ...styles.buttonSmall,
-                            ...styles.buttonSmallActive,
-                            minWidth: '60px',
-                          }}
-                        >
-                          +
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              {(() => {
-                const validPlaylists = searchResults.playlists?.items?.filter((playlist: any) => playlist && playlist.id && playlist.name) || [];
-                return validPlaylists.length > 0 && (
-                  <div style={{ marginBottom: '30px' }}>
-                    <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Playlists</h3>
-                    {validPlaylists.map((playlist: any) => (
-                      <div key={playlist.id} style={styles.actionRow}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
-                            {playlist.name || 'Unknown'}
-                          </div>
-                          <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
-                            by {playlist.owner?.display_name || playlist.owner?.id || 'Unknown'}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => playlist.uri && addSpotifyId(playlist.uri)}
-                          style={{
-                            ...styles.buttonSmall,
-                            ...styles.buttonSmallActive,
-                            minWidth: '60px',
-                          }}
-                        >
-                          +
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              {(() => {
-                const validArtists = searchResults.artists?.items?.filter((artist: any) => artist && artist.id && artist.name) || [];
-                return validArtists.length > 0 && (
-                  <div style={{ marginBottom: '30px' }}>
-                    <h3 style={{ ...styles.cardTitle, fontSize: '1.3rem', marginBottom: '15px' }}>Artists</h3>
-                    {validArtists.map((artist: any) => (
-                      <div key={artist.id} style={styles.actionRow}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
-                            {artist.name || 'Unknown'}
-                          </div>
-                          <div style={{ color: theme.colors.textSecondary, fontSize: '0.9rem', fontFamily: theme.fonts.primary }}>
-                            Artist
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => artist.uri && addSpotifyId(artist.uri)}
-                          style={{
-                            ...styles.buttonSmall,
-                            ...styles.buttonSmallActive,
-                            minWidth: '60px',
-                          }}
-                        >
-                          +
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
+                </div>
+              ))}
             </div>
           )}
         </div>
+
 
 
         <div style={{ textAlign: 'center', marginTop: '40px' }}>
