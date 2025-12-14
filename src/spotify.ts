@@ -5,6 +5,7 @@ import { createHash } from "crypto";
 import { traceApiStart, traceApiEnd } from "./tracing";
 
 const CACHE_DIR = "cache";
+const BASE64_CACHE_DIR = join(process.cwd(), "cache", "base64");
 const CACHE_DURATION = 60 * 60 * 1000 * 24 * 30; // 30 days in milliseconds
 
 let spotifyTokenCache: { token: string; expiresAt: number } | null = null;
@@ -30,6 +31,78 @@ function getArtworkCachePath(spotifyId: string, imageUrl: string): string {
   const idHash = createHash('md5').update(spotifyId).digest('hex');
   const ext = imageUrl.split('.').pop()?.split('?')[0] || 'jpg';
   return join(CACHE_DIR, `artwork_${idHash}_${urlHash}.${ext}`);
+}
+
+// Get base64 cache file path
+function getBase64CachePath(imageUrl: string): string {
+  const urlHash = createHash('md5').update(imageUrl).digest('hex');
+  return join(BASE64_CACHE_DIR, `${urlHash}.json`);
+}
+
+// Ensure base64 cache directory exists
+async function ensureBase64CacheDir(): Promise<void> {
+  try {
+    await mkdir(BASE64_CACHE_DIR, { recursive: true });
+  } catch (error) {
+    // Directory might already exist, ignore error
+  }
+}
+
+// Fetch image and convert to base64, with caching
+async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
+  if (!imageUrl) return null;
+  
+  try {
+    await ensureBase64CacheDir();
+    const cachePath = getBase64CachePath(imageUrl);
+    
+    // Check if already cached
+    try {
+      const cached = await readFile(cachePath, 'utf-8');
+      const data = JSON.parse(cached);
+      // Check if cache is expired (30 days)
+      const age = Date.now() - (data.timestamp || 0);
+      if (age < CACHE_DURATION) {
+        return data.base64;
+      }
+      // Cache expired, delete it
+      await unlink(cachePath);
+    } catch {
+      // Cache doesn't exist, continue to fetch
+    }
+    
+    // Fetch image
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      return null;
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString('base64');
+    
+    // Determine content type from response or URL
+    const contentType = response.headers.get('content-type') || 
+                       (imageUrl.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' :
+                        imageUrl.match(/\.png$/i) ? 'image/png' :
+                        imageUrl.match(/\.gif$/i) ? 'image/gif' :
+                        imageUrl.match(/\.webp$/i) ? 'image/webp' :
+                        'image/jpeg');
+    
+    const dataUri = `data:${contentType};base64,${base64}`;
+    
+    // Cache the base64 data
+    await writeFile(cachePath, JSON.stringify({
+      base64: dataUri,
+      timestamp: Date.now(),
+      contentType,
+    }), 'utf-8');
+    
+    return dataUri;
+  } catch (error) {
+    console.error(`Failed to fetch image as base64 for ${imageUrl}:`, error);
+    return null;
+  }
 }
 
 // Read from disk cache
@@ -470,18 +543,13 @@ export async function handlePlaylistTracksRequest(req: Request): Promise<Respons
 }
 
 export async function handleArtistTopTracksRequest(req: Request): Promise<Response | null> {
-  // Extract artistId from req.params (Bun route syntax) or from URL as fallback
-  let artistId: string;
-  if ((req as any).params?.id) {
-    artistId = decodeURIComponent((req as any).params.id);
-  } else {
-    const url = new URL(req.url);
-    const match = url.pathname.match(/^\/api\/spotify\/artists\/([^\/]+)\/top-tracks$/);
-    if (!match) {
-      return null;
-    }
-    artistId = decodeURIComponent(match[1]);
+  const url = new URL(req.url);
+  const match = url.pathname.match(/^\/api\/spotify\/artists\/([^\/]+)\/top-tracks$/);
+  if (!match) {
+    return null;
   }
+  
+  const artistId = decodeURIComponent(match[1]);
   const market = url.searchParams.get('market') || 'US';
   const traceContext = traceApiStart('GET', `/api/spotify/artists/${artistId}/top-tracks`, 'inbound', { artistId, market });
   try {
@@ -550,16 +618,13 @@ export async function handleMetadataRequest(req: Request): Promise<Response> {
 }
 
 export function createSpotifyRoutes() {
-  // Create a function to handle dynamic metadata routes
-  const handleMetadataRoute = async (req: Request): Promise<Response> => {
-    return await handleMetadataRequest(req) || Response.json({ error: "Invalid metadata request" }, { status: 404 });
-  };
-
   return {
-    // Spotify metadata API - dynamic route handler
-    // Note: Bun doesn't support :id syntax, so we handle it via a function
-    // that checks the path pattern. This will be called for any unmatched route
-    // but we'll add it as a specific handler in the main server.
+    // Spotify metadata API - dynamic route with :id parameter
+    "/api/spotify/metadata/:id": {
+      GET: async (req: Request) => {
+        return handleMetadataRequest(req);
+      },
+    },
     // Note: /api/spotify/token endpoint removed - clients no longer need it
     // All Spotify API calls go through server endpoints which automatically inject the token
     // Configured Spotify IDs API - returns just the list of IDs
@@ -743,8 +808,6 @@ export function createSpotifyRoutes() {
         }
       },
     },
-    // Note: Dynamic routes (tracks/:id, albums/:id/tracks, etc.) are handled in index.ts fetch handler
-    // since Bun routes don't support :id syntax
     // Recent artists limit API
     "/api/spotify/recent-artists-limit": {
       GET: async () => {
@@ -782,6 +845,33 @@ export function createSpotifyRoutes() {
         } catch (error) {
           traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to set recent artists limit" }, { status: 500 });
+        }
+      },
+    },
+    // Image to base64 API - fetches image and returns as base64 data URI
+    "/api/image": {
+      GET: async (req: Request) => {
+        const url = new URL(req.url);
+        const imageUrl = url.searchParams.get('url');
+        const traceContext = traceApiStart('GET', '/api/image', 'inbound', { hasUrl: !!imageUrl });
+        
+        if (!imageUrl) {
+          traceApiEnd(traceContext, 400, { error: "Missing url parameter" });
+          return Response.json({ error: "Missing url parameter" }, { status: 400 });
+        }
+        
+        try {
+          const base64 = await fetchImageAsBase64(imageUrl);
+          if (!base64) {
+            traceApiEnd(traceContext, 404, { error: "Failed to fetch image" });
+            return Response.json({ error: "Failed to fetch image" }, { status: 404 });
+          }
+          
+          traceApiEnd(traceContext, 200, { success: true });
+          return Response.json({ base64 });
+        } catch (error) {
+          traceApiEnd(traceContext, 500, null, error);
+          return Response.json({ error: "Failed to process image" }, { status: 500 });
         }
       },
     },
