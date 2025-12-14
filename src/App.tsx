@@ -627,13 +627,6 @@ export default function App() {
 
   const fetchTrackArtistUri = useCallback(async (trackUri: string) => {
     try {
-      // Get Spotify token
-      const tokenResponse = await apiCall('/api/spotify/token', 'GET', undefined, true);
-      if (!tokenResponse || !tokenResponse.token) {
-        return;
-      }
-      const token = tokenResponse.token;
-
       // Parse track URI
       const parts = trackUri.split(':');
       if (parts.length < 3 || parts[0] !== 'spotify' || parts[1] !== 'track') {
@@ -641,18 +634,12 @@ export default function App() {
       }
       const trackId = parts[2];
 
-      // Fetch track details
-      const response = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      // Fetch track details through server
+      const trackData = await apiCall(`/api/spotify/tracks/${encodeURIComponent(trackId)}`, 'GET', undefined, true);
+      if (!trackData) {
+        return;
+      }
 
-      if (!response.ok) {
-          return;
-        }
-
-      const trackData = await response.json();
       if (trackData.artists && trackData.artists.length > 0) {
         const artist = trackData.artists[0];
         const artistUri = artist.uri;
@@ -694,13 +681,6 @@ export default function App() {
 
   const fetchTracksFromSpotifyId = useCallback(async (spotifyId: string): Promise<string[]> => {
     try {
-      // Get Spotify token from server
-      const tokenResponse = await apiCall('/api/spotify/token', 'GET', undefined, true);
-      if (!tokenResponse || !tokenResponse.token) {
-        throw new Error('Failed to get Spotify token');
-      }
-      const token = tokenResponse.token;
-
       // Parse Spotify URI: spotify:track:xxx or spotify:album:xxx
       const parts = spotifyId.split(':');
       if (parts.length < 3 || parts[0] !== 'spotify') {
@@ -718,21 +698,15 @@ export default function App() {
       let tracks: string[] = [];
       
       if (type === 'album') {
-        // Fetch album tracks
+        // Fetch album tracks through server
         let offset = 0;
         const limit = 50;
         while (true) {
-          const response = await fetch(`https://api.spotify.com/v1/albums/${spotifyIdValue}/tracks?limit=${limit}&offset=${offset}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-            },
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Spotify API error: ${response.status}`);
+          const data = await apiCall(`/api/spotify/albums/${encodeURIComponent(spotifyIdValue)}/tracks?limit=${limit}&offset=${offset}`, 'GET', undefined, true);
+          if (!data || !data.items) {
+            throw new Error('Failed to fetch album tracks');
           }
           
-          const data = await response.json();
           tracks.push(...data.items.map((item: any) => item.uri));
           
           if (!data.next) {
@@ -741,21 +715,15 @@ export default function App() {
           offset += limit;
         }
       } else if (type === 'playlist') {
-        // Fetch playlist tracks
+        // Fetch playlist tracks through server
         let offset = 0;
         const limit = 50;
         while (true) {
-          const response = await fetch(`https://api.spotify.com/v1/playlists/${spotifyIdValue}/tracks?limit=${limit}&offset=${offset}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Spotify API error: ${response.status}`);
+          const data = await apiCall(`/api/spotify/playlists/${encodeURIComponent(spotifyIdValue)}/tracks?limit=${limit}&offset=${offset}`, 'GET', undefined, true);
+          if (!data || !data.items) {
+            throw new Error('Failed to fetch playlist tracks');
           }
           
-          const data = await response.json();
           tracks.push(...data.items
             .filter((item: any) => item.track && item.track.uri)
             .map((item: any) => item.track.uri));
@@ -766,18 +734,12 @@ export default function App() {
           offset += limit;
         }
       } else if (type === 'artist') {
-        // Fetch artist's top tracks
-        const response = await fetch(`https://api.spotify.com/v1/artists/${spotifyIdValue}/top-tracks?market=US`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Spotify API error: ${response.status}`);
+        // Fetch artist's top tracks through server
+        const data = await apiCall(`/api/spotify/artists/${encodeURIComponent(spotifyIdValue)}/top-tracks?market=US`, 'GET', undefined, true);
+        if (!data || !data.tracks) {
+          throw new Error('Failed to fetch artist top tracks');
         }
         
-        const data = await response.json();
         tracks = data.tracks.map((track: any) => track.uri);
       } else {
         throw new Error(`Unsupported type: ${type}`);
@@ -788,7 +750,7 @@ export default function App() {
       console.error('Failed to fetch tracks from Spotify ID:', error);
       throw error;
     }
-  }, []);
+  }, [apiCall]);
 
   const addToQueue = useCallback(async (spotifyId: string) => {
     setLoadingSpotifyId(spotifyId);

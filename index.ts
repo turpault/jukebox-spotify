@@ -3,7 +3,7 @@ import manageHtml from "./public/manage.html";
 import { serve } from "bun";
 import { isKioskMode, launchChromeKiosk } from "./src/kiosk";
 import { createManagementRoutes } from "./src/management";
-import { createSpotifyRoutes, handleMetadataRequest } from "./src/spotify";
+import { createSpotifyRoutes, handleMetadataRequest, handleTrackRequest, handleAlbumTracksRequest, handlePlaylistTracksRequest, handleArtistTopTracksRequest } from "./src/spotify";
 import { createLibrespotRoutes, createLibrespotWebSocket } from "./src/librespot";
 import { traceApiStart, traceApiEnd, traceWebSocketConnection } from "./src/tracing";
 
@@ -32,12 +32,31 @@ const server = serve({
       return new Response("WebSocket upgrade failed", { status: 500 });
     }
     
-    // Handle metadata requests (dynamic route) - must be checked before routes
+    // Handle dynamic Spotify API routes - must be checked before routes
     // since routes don't support dynamic path segments
     if (url.pathname.startsWith('/api/spotify/metadata/')) {
-      console.log('[index.ts] Handling metadata request for:', url.pathname);
       const metadataResponse = await handleMetadataRequest(req);
       return metadataResponse;
+    }
+    
+    if (url.pathname.startsWith('/api/spotify/tracks/')) {
+      const trackResponse = await handleTrackRequest(req);
+      if (trackResponse) return trackResponse;
+    }
+    
+    if (url.pathname.match(/^\/api\/spotify\/albums\/[^\/]+\/tracks$/)) {
+      const albumTracksResponse = await handleAlbumTracksRequest(req);
+      if (albumTracksResponse) return albumTracksResponse;
+    }
+    
+    if (url.pathname.match(/^\/api\/spotify\/playlists\/[^\/]+\/tracks$/)) {
+      const playlistTracksResponse = await handlePlaylistTracksRequest(req);
+      if (playlistTracksResponse) return playlistTracksResponse;
+    }
+    
+    if (url.pathname.match(/^\/api\/spotify\/artists\/[^\/]+\/top-tracks$/)) {
+      const artistTracksResponse = await handleArtistTopTracksRequest(req);
+      if (artistTracksResponse) return artistTracksResponse;
     }
     
     // For all other requests, Bun will check the routes object

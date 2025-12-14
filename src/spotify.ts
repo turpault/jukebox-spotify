@@ -344,6 +344,171 @@ async function fetchSpotifyMetadata(id: string, token: string | null): Promise<{
   }
 }
 
+// Export handlers for dynamic Spotify API routes
+export async function handleTrackRequest(req: Request): Promise<Response | null> {
+  const url = new URL(req.url);
+  if (!url.pathname.startsWith('/api/spotify/tracks/')) {
+    return null;
+  }
+  
+  const trackId = decodeURIComponent(url.pathname.replace('/api/spotify/tracks/', ''));
+  if (!trackId) {
+    return Response.json({ error: "Missing track ID" }, { status: 400 });
+  }
+  
+  const traceContext = traceApiStart('GET', `/api/spotify/tracks/${trackId}`, 'inbound', { trackId });
+  try {
+    const token = await getSpotifyToken();
+    if (!token) {
+      traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
+      return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
+    }
+
+    const spotifyTraceContext = traceApiStart('GET', `https://api.spotify.com/v1/tracks/${trackId}`, 'outbound');
+    const response = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      traceApiEnd(spotifyTraceContext, response.status, null);
+      traceApiEnd(traceContext, response.status, { error: "Spotify API error" });
+      return Response.json({ error: "Spotify API error" }, { status: response.status });
+    }
+
+    const data = await response.json();
+    traceApiEnd(spotifyTraceContext, response.status, { trackName: data.name });
+    traceApiEnd(traceContext, 200, { trackName: data.name });
+    return Response.json(data);
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to fetch track" }, { status: 500 });
+  }
+}
+
+export async function handleAlbumTracksRequest(req: Request): Promise<Response | null> {
+  const url = new URL(req.url);
+  const match = url.pathname.match(/^\/api\/spotify\/albums\/([^\/]+)\/tracks$/);
+  if (!match) {
+    return null;
+  }
+  
+  const albumId = decodeURIComponent(match[1]);
+  const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+  const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+  const traceContext = traceApiStart('GET', `/api/spotify/albums/${albumId}/tracks`, 'inbound', { albumId, limit, offset });
+  try {
+    const token = await getSpotifyToken();
+    if (!token) {
+      traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
+      return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
+    }
+
+    const spotifyTraceContext = traceApiStart('GET', `https://api.spotify.com/v1/albums/${albumId}/tracks`, 'outbound', { limit, offset });
+    const response = await fetch(`https://api.spotify.com/v1/albums/${albumId}/tracks?limit=${limit}&offset=${offset}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      traceApiEnd(spotifyTraceContext, response.status, null);
+      traceApiEnd(traceContext, response.status, { error: "Spotify API error" });
+      return Response.json({ error: "Spotify API error" }, { status: response.status });
+    }
+
+    const data = await response.json();
+    traceApiEnd(spotifyTraceContext, response.status, { tracksCount: data.items?.length || 0, hasNext: !!data.next });
+    traceApiEnd(traceContext, 200, { tracksCount: data.items?.length || 0, hasNext: !!data.next });
+    return Response.json(data);
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to fetch album tracks" }, { status: 500 });
+  }
+}
+
+export async function handlePlaylistTracksRequest(req: Request): Promise<Response | null> {
+  const url = new URL(req.url);
+  const match = url.pathname.match(/^\/api\/spotify\/playlists\/([^\/]+)\/tracks$/);
+  if (!match) {
+    return null;
+  }
+  
+  const playlistId = decodeURIComponent(match[1]);
+  const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+  const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+  const traceContext = traceApiStart('GET', `/api/spotify/playlists/${playlistId}/tracks`, 'inbound', { playlistId, limit, offset });
+  try {
+    const token = await getSpotifyToken();
+    if (!token) {
+      traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
+      return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
+    }
+
+    const spotifyTraceContext = traceApiStart('GET', `https://api.spotify.com/v1/playlists/${playlistId}/tracks`, 'outbound', { limit, offset });
+    const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=${limit}&offset=${offset}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      traceApiEnd(spotifyTraceContext, response.status, null);
+      traceApiEnd(traceContext, response.status, { error: "Spotify API error" });
+      return Response.json({ error: "Spotify API error" }, { status: response.status });
+    }
+
+    const data = await response.json();
+    traceApiEnd(spotifyTraceContext, response.status, { tracksCount: data.items?.length || 0, hasNext: !!data.next });
+    traceApiEnd(traceContext, 200, { tracksCount: data.items?.length || 0, hasNext: !!data.next });
+    return Response.json(data);
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to fetch playlist tracks" }, { status: 500 });
+  }
+}
+
+export async function handleArtistTopTracksRequest(req: Request): Promise<Response | null> {
+  const url = new URL(req.url);
+  const match = url.pathname.match(/^\/api\/spotify\/artists\/([^\/]+)\/top-tracks$/);
+  if (!match) {
+    return null;
+  }
+  
+  const artistId = decodeURIComponent(match[1]);
+  const market = url.searchParams.get('market') || 'US';
+  const traceContext = traceApiStart('GET', `/api/spotify/artists/${artistId}/top-tracks`, 'inbound', { artistId, market });
+  try {
+    const token = await getSpotifyToken();
+    if (!token) {
+      traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
+      return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
+    }
+
+    const spotifyTraceContext = traceApiStart('GET', `https://api.spotify.com/v1/artists/${artistId}/top-tracks`, 'outbound', { market });
+    const response = await fetch(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=${market}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      traceApiEnd(spotifyTraceContext, response.status, null);
+      traceApiEnd(traceContext, response.status, { error: "Spotify API error" });
+      return Response.json({ error: "Spotify API error" }, { status: response.status });
+    }
+
+    const data = await response.json();
+    traceApiEnd(spotifyTraceContext, response.status, { tracksCount: data.tracks?.length || 0 });
+    traceApiEnd(traceContext, 200, { tracksCount: data.tracks?.length || 0 });
+    return Response.json(data);
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to fetch artist top tracks" }, { status: 500 });
+  }
+}
+
 // Export metadata handler for use in main server
 export async function handleMetadataRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
@@ -589,6 +754,8 @@ export function createSpotifyRoutes() {
         }
       },
     },
+    // Note: Dynamic routes (tracks/:id, albums/:id/tracks, etc.) are handled in index.ts fetch handler
+    // since Bun routes don't support :id syntax
     // Recent artists limit API
     "/api/spotify/recent-artists-limit": {
       GET: async () => {
