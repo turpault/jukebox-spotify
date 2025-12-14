@@ -4,14 +4,36 @@ import indexHtml from "./public/index.html";
 import manageHtml from "./public/manage.html";
 import { serve } from "bun";
 
-// Theme storage file
-const THEME_FILE = ".theme.json";
-// Hotkeys configuration file
-const HOTKEYS_FILE = "hotkeys.json";
 // Configuration file
 const CONFIG_FILE = "config.json";
 
 interface Config {
+  theme?: string;
+  view?: string;
+  hotkeys?: {
+    keyboard?: {
+      playPause?: string;
+      next?: string;
+      previous?: string;
+      volumeUp?: string;
+      volumeDown?: string;
+      seekForward?: string;
+      seekBackward?: string;
+      shuffle?: string;
+      repeat?: string;
+    };
+    gamepad?: {
+      playPause?: number;
+      next?: number;
+      previous?: number;
+      volumeUp?: number;
+      volumeDown?: number;
+      shuffle?: number;
+      repeat?: number;
+    };
+    volumeStep?: number;
+    seekStep?: number;
+  };
   spotify?: {
     clientId?: string;
     clientSecret?: string;
@@ -26,25 +48,7 @@ async function getConfigVersion(): Promise<string> {
   try {
     const hash = createHash('md5');
     
-    // Hash theme file
-    try {
-      const themeData = await readFile(THEME_FILE, "utf-8");
-      hash.update(themeData);
-    } catch {
-      // File doesn't exist, use default
-      hash.update('steampunk');
-    }
-    
-    // Hash hotkeys file
-    try {
-      const hotkeysData = await readFile(HOTKEYS_FILE, "utf-8");
-      hash.update(hotkeysData);
-    } catch {
-      // File doesn't exist, use default
-      hash.update('{}');
-    }
-    
-    // Hash config file
+    // Hash config file (which now contains theme, hotkeys, and spotify config)
     try {
       const configData = await readFile(CONFIG_FILE, "utf-8");
       hash.update(configData);
@@ -62,25 +66,69 @@ async function getConfigVersion(): Promise<string> {
 
 async function getTheme(): Promise<string> {
   try {
-    const data = await readFile(THEME_FILE, "utf-8");
-    const theme = JSON.parse(data);
-    return theme.name || "steampunk";
+    const config = await getConfig();
+    return config.theme || "steampunk";
   } catch (error) {
-    // Default theme if file doesn't exist
+    // Default theme if config doesn't exist
     return "steampunk";
   }
 }
 
 async function setTheme(themeName: string): Promise<void> {
-  await writeFile(THEME_FILE, JSON.stringify({ name: themeName }, null, 2));
+  const config = await getConfig();
+  config.theme = themeName;
+  await setConfig(config);
+}
+
+async function getView(): Promise<string> {
+  try {
+    const config = await getConfig();
+    return config.view || "default";
+  } catch (error) {
+    // Default view if config doesn't exist
+    return "default";
+  }
+}
+
+async function setView(viewName: string): Promise<void> {
+  const config = await getConfig();
+  config.view = viewName;
+  await setConfig(config);
 }
 
 async function getHotkeys(): Promise<any> {
   try {
-    const data = await readFile(HOTKEYS_FILE, "utf-8");
-    return JSON.parse(data);
+    const config = await getConfig();
+    if (config.hotkeys) {
+      return config.hotkeys;
+    }
+    // Return default hotkeys if not in config
+    return {
+      keyboard: {
+        playPause: "Space",
+        next: "ArrowRight",
+        previous: "ArrowLeft",
+        volumeUp: "ArrowUp",
+        volumeDown: "ArrowDown",
+        seekForward: "KeyF",
+        seekBackward: "KeyB",
+        shuffle: "KeyS",
+        repeat: "KeyR"
+      },
+      gamepad: {
+        playPause: 0,
+        next: 1,
+        previous: 2,
+        volumeUp: 3,
+        volumeDown: 4,
+        shuffle: 5,
+        repeat: 6
+      },
+      volumeStep: 5,
+      seekStep: 10000
+    };
   } catch (error) {
-    // Return default hotkeys if file doesn't exist
+    // Return default hotkeys if config doesn't exist
     return {
       keyboard: {
         playPause: "Space",
@@ -109,7 +157,9 @@ async function getHotkeys(): Promise<any> {
 }
 
 async function setHotkeys(hotkeys: any): Promise<void> {
-  await writeFile(HOTKEYS_FILE, JSON.stringify(hotkeys, null, 2));
+  const config = await getConfig();
+  config.hotkeys = hotkeys;
+  await setConfig(config);
 }
 
 async function getConfig(): Promise<Config> {
@@ -376,6 +426,31 @@ serve({
           return Response.json({ theme: themeName });
         } catch (error) {
           return Response.json({ error: "Failed to set theme" }, { status: 500 });
+        }
+      },
+    },
+    "/api/view": {
+      GET: async () => {
+        try {
+          const viewName = await getView();
+          return Response.json({ view: viewName });
+        } catch (error) {
+          return Response.json({ error: "Failed to get view" }, { status: 500 });
+        }
+      },
+      POST: async (req) => {
+        try {
+          const body = await req.json() as { view?: string };
+          const viewName = body.view;
+          
+          if (!viewName) {
+            return Response.json({ error: "View name is required" }, { status: 400 });
+          }
+          
+          await setView(viewName);
+          return Response.json({ view: viewName });
+        } catch (error) {
+          return Response.json({ error: "Failed to set view" }, { status: 500 });
         }
       },
     },

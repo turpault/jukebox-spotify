@@ -163,6 +163,7 @@ interface HotkeyConfig {
 export default function App() {
   const [theme, setTheme] = useState<Theme>(steampunkTheme);
   const [themeName, setThemeName] = useState<string>('steampunk');
+  const [viewName, setViewName] = useState<string>('default');
   const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
   const [spotifyIds, setSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
@@ -448,6 +449,17 @@ export default function App() {
     }
   }, []);
 
+  const fetchView = useCallback(async () => {
+    try {
+      const response = await apiCall('/api/view', 'GET', undefined, true);
+      if (response && response.view) {
+        setViewName(response.view);
+      }
+    } catch (error) {
+      console.error('Failed to fetch view:', error);
+    }
+  }, []);
+
   const fetchHotkeys = useCallback(async () => {
     try {
       const response = await apiCall('/api/hotkeys', 'GET', undefined, true);
@@ -593,6 +605,7 @@ export default function App() {
           console.log('Configuration changed, reloading...');
           // Reload all configuration
           await fetchTheme();
+          await fetchView();
           await fetchHotkeys();
           await fetchSpotifyIds();
         }
@@ -769,6 +782,8 @@ export default function App() {
     fetchKioskMode();
     // Fetch theme on page load
     fetchTheme();
+    // Fetch view on page load
+    fetchView();
     // Fetch hotkeys on page load
     fetchHotkeys();
     // Fetch Spotify IDs on page load
@@ -791,7 +806,7 @@ export default function App() {
         clearInterval(configPollIntervalRef.current);
       }
     };
-  }, [fetchPlaybackStatus, fetchTheme, fetchKioskMode, fetchHotkeys, fetchSpotifyIds, checkConfigVersion]);
+  }, [fetchPlaybackStatus, fetchTheme, fetchView, fetchKioskMode, fetchHotkeys, fetchSpotifyIds, checkConfigVersion]);
 
   // Update position during playback
   useEffect(() => {
@@ -1193,7 +1208,8 @@ export default function App() {
               <span style={styles.timeLabel}>{formatTime(playerState.duration)}</span>
             </div>
 
-            {/* Main playback controls */}
+            {/* Main playback controls - hidden in dash view */}
+            {viewName !== 'dash' && (
             <div style={styles.controls}>
               <button 
                 style={{...styles.button, ...(playerState.shuffleContext ? styles.buttonActive : {})}}
@@ -1282,8 +1298,10 @@ export default function App() {
                 )}
               </button>
             </div>
+            )}
 
-            {/* Volume control */}
+            {/* Volume control - hidden in dash view */}
+            {viewName !== 'dash' && (
             <div style={styles.volumeContainer}>
               <div style={styles.iconVolume}>
                 <div style={styles.iconVolumeBody}></div>
@@ -1310,6 +1328,7 @@ export default function App() {
               />
               <span style={styles.volumeLabel}>{Math.round((playerState.volume / (playerState.volumeMax || 100)) * 100)}%</span>
             </div>
+            )}
           </div>
           </>
         ) : (
@@ -1319,8 +1338,8 @@ export default function App() {
           </div>
         )}
 
-        {/* Spotify ID Buttons - Horizontal Scrollable at Bottom */}
-        {spotifyIds.length > 0 && (
+        {/* Spotify ID Buttons - Horizontal Scrollable at Bottom - hidden in dash view */}
+        {viewName !== 'dash' && spotifyIds.length > 0 && (
           <div style={styles.spotifyIdsContainer}>
             <div style={styles.spotifyIdsScroll}>
               {spotifyIds.map((item) => (

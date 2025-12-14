@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface HotkeyConfig {
   keyboard: {
@@ -123,6 +123,7 @@ export default function Manage() {
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
   const [themeName, setThemeName] = useState<string>('steampunk');
   const [theme, setTheme] = useState<Theme>(steampunkTheme);
+  const [viewName, setViewName] = useState<string>('default');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string>('');
   const [capturingKey, setCapturingKey] = useState<string | null>(null);
@@ -132,6 +133,7 @@ export default function Manage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<any>(null);
   const [searching, setSearching] = useState(false);
+  const isInitialLoad = useRef(true);
 
   const fetchHotkeys = useCallback(async () => {
     try {
@@ -158,6 +160,18 @@ export default function Manage() {
       }
     } catch (error) {
       console.error('Failed to fetch theme:', error);
+    }
+  }, []);
+
+  const fetchView = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/view`);
+      const data = await response.json();
+      if (data && data.view) {
+        setViewName(data.view);
+      }
+    } catch (error) {
+      console.error('Failed to fetch view:', error);
     }
   }, []);
 
@@ -191,43 +205,37 @@ export default function Manage() {
   useEffect(() => {
     fetchHotkeys();
     fetchTheme();
+    fetchView();
     fetchSpotifyIds();
     fetchSpotifyConfig();
-  }, [fetchHotkeys, fetchTheme, fetchSpotifyIds, fetchSpotifyConfig]);
+    // Mark initial load as complete after a short delay
+    setTimeout(() => {
+      isInitialLoad.current = false;
+    }, 1000);
+  }, [fetchHotkeys, fetchTheme, fetchView, fetchSpotifyIds, fetchSpotifyConfig]);
 
-  const saveHotkeys = async () => {
-    if (!hotkeys) return;
-    setSaving(true);
-    setMessage('');
+  const saveHotkeys = async (hotkeysToSave: HotkeyConfig) => {
     try {
       const response = await fetch(`${API_BASE}/api/hotkeys`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(hotkeys),
+        body: JSON.stringify(hotkeysToSave),
       });
       const data = await response.json();
-      if (data.success) {
-        setMessage('Hotkeys saved successfully!');
-      } else {
-        setMessage('Failed to save hotkeys');
+      if (!data.success) {
+        console.error('Failed to save hotkeys');
       }
     } catch (error) {
-      setMessage('Error saving hotkeys');
-      console.error(error);
-    } finally {
-      setSaving(false);
-      setTimeout(() => setMessage(''), 3000);
+      console.error('Error saving hotkeys:', error);
     }
   };
 
-  const saveTheme = async () => {
-    setSaving(true);
-    setMessage('');
+  const saveTheme = async (themeToSave: string) => {
     try {
       const response = await fetch(`${API_BASE}/api/theme`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme: themeName }),
+        body: JSON.stringify({ theme: themeToSave }),
       });
       const data = await response.json();
       if (data.theme) {
@@ -235,25 +243,54 @@ export default function Manage() {
         if (themes[data.theme]) {
           setTheme(themes[data.theme]);
         }
-        setMessage('Theme saved successfully!');
       } else {
-        setMessage('Failed to save theme');
+        console.error('Failed to save theme');
       }
     } catch (error) {
-      setMessage('Error saving theme');
-      console.error(error);
-    } finally {
-      setSaving(false);
-      setTimeout(() => setMessage(''), 3000);
+      console.error('Error saving theme:', error);
     }
   };
 
-  // Update theme when themeName changes
+  const saveView = async (viewToSave: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/view`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ view: viewToSave }),
+      });
+      const data = await response.json();
+      if (!data.view) {
+        console.error('Failed to save view');
+      }
+    } catch (error) {
+      console.error('Error saving view:', error);
+    }
+  };
+
+  // Update theme when themeName changes and auto-save
   useEffect(() => {
     if (themes[themeName]) {
       setTheme(themes[themeName]);
+      // Auto-save theme when it changes (but not on initial load)
+      if (!isInitialLoad.current) {
+        saveTheme(themeName);
+      }
     }
   }, [themeName]);
+
+  // Auto-save view when it changes
+  useEffect(() => {
+    if (!isInitialLoad.current) {
+      saveView(viewName);
+    }
+  }, [viewName]);
+
+  // Auto-save hotkeys when they change
+  useEffect(() => {
+    if (hotkeys && !isInitialLoad.current) {
+      saveHotkeys(hotkeys);
+    }
+  }, [hotkeys]);
 
   // Update document body background when theme changes
   useEffect(() => {
@@ -605,7 +642,7 @@ export default function Manage() {
           {/* Theme Configuration */}
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Theme</h2>
-            <div style={{ marginBottom: '20px' }}>
+            <div>
               <label style={styles.label}>
                 Select Theme:
               </label>
@@ -618,22 +655,24 @@ export default function Manage() {
                 <option value="matrix">Matrix</option>
               </select>
             </div>
-            <button
-              onClick={saveTheme}
-              disabled={saving}
-              style={{
-                ...styles.button,
-                width: '100%',
-                ...(saving ? styles.buttonDisabled : {}),
-              }}
-            >
-              {saving ? 'Saving...' : 'Save Theme'}
-            </button>
           </div>
 
           {/* Settings */}
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Settings</h2>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={styles.label}>
+                Select View:
+              </label>
+              <select
+                value={viewName}
+                onChange={(e) => setViewName(e.target.value)}
+                style={styles.select}
+              >
+                <option value="default">Default (Controls & Queue)</option>
+                <option value="dash">Dash (Track Only)</option>
+              </select>
+            </div>
             {hotkeys && (
               <>
                 <div style={{ marginBottom: '15px' }}>
@@ -959,21 +998,6 @@ export default function Manage() {
           )}
         </div>
 
-        {/* Save Button */}
-        <div style={{ textAlign: 'center' }}>
-          <button
-            onClick={saveHotkeys}
-            disabled={saving || !hotkeys}
-            style={{
-              ...styles.button,
-              padding: '15px 40px',
-              fontSize: '1.2rem',
-              ...(saving || !hotkeys ? styles.buttonDisabled : {}),
-            }}
-          >
-            {saving ? 'Saving...' : 'Save All Hotkeys'}
-          </button>
-        </div>
 
         <div style={{ textAlign: 'center', marginTop: '40px' }}>
           <a href="/" style={styles.link}>
