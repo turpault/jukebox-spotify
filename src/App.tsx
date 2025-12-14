@@ -168,11 +168,7 @@ export default function App() {
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
   const [configuredSpotifyIds, setConfiguredSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
   const [recentArtists, setRecentArtists] = useState<SpotifyIdWithArtwork[]>([]);
-  const [showRecentArtists, setShowRecentArtists] = useState<boolean>(false);
   const [loadingSpotifyId, setLoadingSpotifyId] = useState<string | null>(null);
-  
-  // Computed: which list to show
-  const spotifyIds = showRecentArtists ? recentArtists : configuredSpotifyIds;
   
   const [playerState, setPlayerState] = useState<PlayerState>({
     isPaused: true,
@@ -676,7 +672,7 @@ export default function App() {
   const addToQueue = useCallback(async (spotifyId: string) => {
     setLoadingSpotifyId(spotifyId);
     try {
-      const item = spotifyIds.find((s: SpotifyIdWithArtwork) => s.id === spotifyId);
+      const item = [...configuredSpotifyIds, ...recentArtists].find((s: SpotifyIdWithArtwork) => s.id === spotifyId);
       const itemName = item?.name || spotifyId;
       
       // Fetch all tracks (handles single tracks, albums, playlists, artists)
@@ -714,7 +710,7 @@ export default function App() {
     } finally {
       setLoadingSpotifyId(null);
     }
-  }, [spotifyIds, fetchTracksFromSpotifyId]);
+  }, [configuredSpotifyIds, recentArtists, fetchTracksFromSpotifyId]);
 
   const updateTheme = useCallback(async (newThemeName: string) => {
     // Update theme immediately for responsive UI
@@ -1298,131 +1294,157 @@ export default function App() {
           </div>
         )}
 
-        {/* Spotify ID Buttons - Horizontal Scrollable at Bottom - hidden in dash view */}
-        {viewName !== 'dash' && (configuredSpotifyIds.length > 0 || recentArtists.length > 0) && (
-          <div style={styles.spotifyIdsContainer}>
-            {/* Toggle between configured and recent artists */}
-            {(configuredSpotifyIds.length > 0 && recentArtists.length > 0) && (
-              <div style={{
-                display: 'flex',
-                gap: '10px',
-                padding: '10px 20px',
-                background: theme.colors.surface,
-                borderBottom: `1px solid ${theme.colors.border}`,
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}>
-                <button
-                  onClick={() => setShowRecentArtists(false)}
-                  style={{
-                    padding: '8px 16px',
-                    background: !showRecentArtists 
-                      ? `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.secondary} 100%)`
-                      : theme.colors.surface,
-                    border: `2px solid ${theme.colors.border}`,
-                    borderRadius: theme.effects.borderRadius,
-                    color: !showRecentArtists 
-                      ? (theme.name === 'Matrix' ? '#000000' : '#2C1810')
-                      : theme.colors.text,
-                    cursor: 'pointer',
-                    fontFamily: theme.fonts.primary,
-                    fontSize: '0.9rem',
-                    fontWeight: !showRecentArtists ? 'bold' : 'normal',
-                  }}
-                >
-                  Configured ({configuredSpotifyIds.length})
-                </button>
-                <button
-                  onClick={() => setShowRecentArtists(true)}
-                  style={{
-                    padding: '8px 16px',
-                    background: showRecentArtists 
-                      ? `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.secondary} 100%)`
-                      : theme.colors.surface,
-                    border: `2px solid ${theme.colors.border}`,
-                    borderRadius: theme.effects.borderRadius,
-                    color: showRecentArtists 
-                      ? (theme.name === 'Matrix' ? '#000000' : '#2C1810')
-                      : theme.colors.text,
-                    cursor: 'pointer',
-                    fontFamily: theme.fonts.primary,
-                    fontSize: '0.9rem',
-                    fontWeight: showRecentArtists ? 'bold' : 'normal',
-                  }}
-                >
-                  Recent Artists ({recentArtists.length})
-                </button>
+        {/* Spotify ID Lists - Side by side, vertically scrollable - hidden in dash view */}
+        {viewName !== 'dash' && (
+          <>
+            {/* Configured IDs - Left Side */}
+            {configuredSpotifyIds.length > 0 && (
+              <div style={styles.spotifyIdsSidebarLeft}>
+                <div style={styles.spotifyIdsSidebarTitle}>Configured</div>
+                <div style={styles.spotifyIdsSidebarScroll}>
+                  {configuredSpotifyIds.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => addToQueue(item.id)}
+                      style={styles.spotifyIdButton}
+                      title={item.name}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                        e.currentTarget.style.boxShadow = theme.effects.shadow;
+                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
+                        if (overlay) overlay.style.opacity = '1';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = 'none';
+                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
+                        if (overlay) overlay.style.opacity = '0';
+                      }}
+                    >
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          style={{
+                            ...styles.spotifyIdImage,
+                            opacity: loadingSpotifyId === item.id ? 0.3 : 1,
+                            filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
+                          }}
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const parent = target.parentElement;
+                            if (parent) {
+                              const fallback = document.createElement('div');
+                              fallback.style.cssText = `width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${theme.colors.surface}; color: ${theme.colors.text}; font-size: 0.8rem; text-align: center; padding: 10px; font-family: ${theme.fonts.primary};`;
+                              fallback.textContent = item.name;
+                              parent.appendChild(fallback);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: theme.colors.surface,
+                          color: theme.colors.text,
+                          fontSize: '0.8rem',
+                          textAlign: 'center',
+                          padding: '10px',
+                          fontFamily: theme.fonts.primary,
+                          opacity: loadingSpotifyId === item.id ? 0.3 : 1,
+                          filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
+                          transition: 'opacity 0.3s, filter 0.3s',
+                        }}>
+                          {item.name}
+                        </div>
+                      )}
+                      <div style={styles.spotifyIdOverlay} data-overlay>
+                        <div style={styles.spotifyIdName}>{item.name}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
-            <div style={styles.spotifyIdsScroll}>
-              {spotifyIds.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => addToQueue(item.id)}
-                  style={styles.spotifyIdButton}
-                  title={item.name}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'scale(1.05)';
-                    e.currentTarget.style.boxShadow = theme.effects.shadow;
-                    const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
-                    if (overlay) overlay.style.opacity = '1';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'scale(1)';
-                    e.currentTarget.style.boxShadow = 'none';
-                    const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
-                    if (overlay) overlay.style.opacity = '0';
-                  }}
-                >
-                  {item.imageUrl ? (
-                    <img
-                      src={item.imageUrl}
-                      alt={item.name}
-                      style={{
-                        ...styles.spotifyIdImage,
-                        opacity: loadingSpotifyId === item.id ? 0.3 : 1,
-                        filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
+
+            {/* Recent Artists - Right Side */}
+            {recentArtists.length > 0 && (
+              <div style={styles.spotifyIdsSidebarRight}>
+                <div style={styles.spotifyIdsSidebarTitle}>Recent Artists</div>
+                <div style={styles.spotifyIdsSidebarScroll}>
+                  {recentArtists.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => addToQueue(item.id)}
+                      style={styles.spotifyIdButton}
+                      title={item.name}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                        e.currentTarget.style.boxShadow = theme.effects.shadow;
+                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
+                        if (overlay) overlay.style.opacity = '1';
                       }}
-                      onError={(e) => {
-                        // Fallback if image fails to load
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        const parent = target.parentElement;
-                        if (parent) {
-                          const fallback = document.createElement('div');
-                          fallback.style.cssText = `width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${theme.colors.surface}; color: ${theme.colors.text}; font-size: 0.8rem; text-align: center; padding: 10px; font-family: ${theme.fonts.primary};`;
-                          fallback.textContent = item.name;
-                          parent.appendChild(fallback);
-                        }
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = 'none';
+                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
+                        if (overlay) overlay.style.opacity = '0';
                       }}
-                    />
-                  ) : (
-                    <div style={{
-                      width: '100%',
-                      height: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      background: theme.colors.surface,
-                      color: theme.colors.text,
-                      fontSize: '0.8rem',
-                      textAlign: 'center',
-                      padding: '10px',
-                      fontFamily: theme.fonts.primary,
-                      opacity: loadingSpotifyId === item.id ? 0.3 : 1,
-                      filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
-                      transition: 'opacity 0.3s, filter 0.3s',
-                    }}>
-                      {item.name}
-                    </div>
-                  )}
-                  <div style={styles.spotifyIdOverlay} data-overlay>
-                    <div style={styles.spotifyIdName}>{item.name}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+                    >
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          style={{
+                            ...styles.spotifyIdImage,
+                            opacity: loadingSpotifyId === item.id ? 0.3 : 1,
+                            filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
+                          }}
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const parent = target.parentElement;
+                            if (parent) {
+                              const fallback = document.createElement('div');
+                              fallback.style.cssText = `width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${theme.colors.surface}; color: ${theme.colors.text}; font-size: 0.8rem; text-align: center; padding: 10px; font-family: ${theme.fonts.primary};`;
+                              fallback.textContent = item.name;
+                              parent.appendChild(fallback);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: theme.colors.surface,
+                          color: theme.colors.text,
+                          fontSize: '0.8rem',
+                          textAlign: 'center',
+                          padding: '10px',
+                          fontFamily: theme.fonts.primary,
+                          opacity: loadingSpotifyId === item.id ? 0.3 : 1,
+                          filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
+                          transition: 'opacity 0.3s, filter 0.3s',
+                        }}>
+                          {item.name}
+                        </div>
+                      )}
+                      <div style={styles.spotifyIdOverlay} data-overlay>
+                        <div style={styles.spotifyIdName}>{item.name}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1491,7 +1513,8 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
     maxWidth: '800px',
     width: '100%',
     padding: '20px',
-    paddingBottom: '150px', // Add padding to prevent content from being hidden behind fixed bottom bar
+    marginLeft: '180px',
+    marginRight: '180px',
     background: theme.colors.surface,
     borderRadius: theme.effects.borderRadius,
     border: `2px solid ${theme.colors.border}`,
@@ -1715,33 +1738,60 @@ const createStyles = (theme: Theme): Record<string, React.CSSProperties> => ({
     borderRight: 'none',
     borderRadius: '2px 0 0 2px',
   },
-  spotifyIdsContainer: {
+  spotifyIdsSidebarLeft: {
     position: 'fixed',
-    bottom: 0,
     left: 0,
-    right: 0,
-    padding: '15px 20px',
+    top: 0,
+    bottom: 0,
+    width: '160px',
+    padding: '15px 10px',
     background: theme.colors.surface,
-    borderTop: `2px solid ${theme.colors.border}`,
-    boxShadow: `0 -4px 20px rgba(0, 0, 0, 0.5)`,
+    borderRight: `2px solid ${theme.colors.border}`,
+    boxShadow: `4px 0 20px rgba(0, 0, 0, 0.5)`,
     zIndex: 100,
-  },
-  spotifyIdsScroll: {
     display: 'flex',
+    flexDirection: 'column',
+  },
+  spotifyIdsSidebarRight: {
+    position: 'fixed',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '160px',
+    padding: '15px 10px',
+    background: theme.colors.surface,
+    borderLeft: `2px solid ${theme.colors.border}`,
+    boxShadow: `-4px 0 20px rgba(0, 0, 0, 0.5)`,
+    zIndex: 100,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  spotifyIdsSidebarTitle: {
+    color: theme.colors.primary,
+    fontSize: '0.9rem',
+    fontWeight: 'bold',
+    fontFamily: theme.fonts.title,
+    marginBottom: '15px',
+    textAlign: 'center',
+    paddingBottom: '10px',
+    borderBottom: `1px solid ${theme.colors.border}`,
+  },
+  spotifyIdsSidebarScroll: {
+    display: 'flex',
+    flexDirection: 'column',
     gap: '15px',
-    overflowX: 'auto',
-    overflowY: 'hidden',
+    overflowY: 'auto',
+    overflowX: 'hidden',
     scrollbarWidth: 'thin',
     scrollbarColor: `${theme.colors.border} ${theme.colors.surface}`,
-    paddingBottom: '5px',
-    // Hide scrollbar for webkit browsers
+    flex: 1,
     WebkitOverflowScrolling: 'touch',
   },
   spotifyIdButton: {
     position: 'relative',
     flexShrink: 0,
-    width: '100px',
-    height: '100px',
+    width: '100%',
+    aspectRatio: '1',
     padding: 0,
     border: `2px solid ${theme.colors.border}`,
     borderRadius: theme.effects.borderRadius,
