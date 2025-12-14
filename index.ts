@@ -54,6 +54,11 @@ const server = serve({
       });
     }
     
+    // Handle dynamic Spotify metadata route (Bun routes don't support :id syntax)
+    if (url.pathname.startsWith("/api/spotify/metadata/")) {
+      return handleMetadataRequest(req);
+    }
+    
     // For all other requests, return undefined to let routes handle it
     return undefined as any;
   },
