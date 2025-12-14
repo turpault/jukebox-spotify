@@ -345,13 +345,20 @@ async function fetchSpotifyMetadata(id: string, token: string | null): Promise<{
 }
 
 // Export metadata handler for use in main server
-export async function handleMetadataRequest(req: Request): Promise<Response | null> {
+export async function handleMetadataRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
+  // This function should only be called for metadata paths, but double-check
   if (!url.pathname.startsWith('/api/spotify/metadata/')) {
-    return null;
+    console.error('[handleMetadataRequest] Called with invalid path:', url.pathname);
+    return Response.json({ error: "Invalid metadata request path" }, { status: 400 });
   }
   
   const id = decodeURIComponent(url.pathname.replace('/api/spotify/metadata/', ''));
+  if (!id) {
+    console.error('[handleMetadataRequest] No ID found in path:', url.pathname);
+    return Response.json({ error: "Missing metadata ID" }, { status: 400 });
+  }
+  
   const traceContext = traceApiStart('GET', `/api/spotify/metadata/${id}`, 'inbound', { id });
   try {
     const token = await getSpotifyToken();
@@ -360,10 +367,13 @@ export async function handleMetadataRequest(req: Request): Promise<Response | nu
       return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
     }
     
+    // This is where fetchSpotifyMetadata should be called
+    console.log('[handleMetadataRequest] Calling fetchSpotifyMetadata for id:', id);
     const metadata = await fetchSpotifyMetadata(id, token);
     traceApiEnd(traceContext, 200, { id: metadata.id, type: metadata.type, hasImage: !!metadata.imageUrl });
     return Response.json(metadata);
   } catch (error) {
+    console.error('[handleMetadataRequest] Error:', error);
     traceApiEnd(traceContext, 500, null, error);
     return Response.json({ error: "Failed to fetch metadata" }, { status: 500 });
   }

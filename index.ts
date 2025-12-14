@@ -35,10 +35,9 @@ const server = serve({
     // Handle metadata requests (dynamic route) - must be checked before routes
     // since routes don't support dynamic path segments
     if (url.pathname.startsWith('/api/spotify/metadata/')) {
+      console.log('[index.ts] Handling metadata request for:', url.pathname);
       const metadataResponse = await handleMetadataRequest(req);
-      if (metadataResponse) {
-        return metadataResponse;
-      }
+      return metadataResponse;
     }
     
     // For all other requests, Bun will check the routes object
