@@ -95,13 +95,25 @@ The application will be available at `http://localhost:3000`.
 
 ### iOS 9 Compatibility
 
-For iOS 9 devices (iPad/iPhone running iOS 9), you need to build the client bundle first:
+For iOS 9 devices (iPad/iPhone running iOS 9), you need to build the client bundle with Babel transpilation:
 
 ```bash
 bun run build:client
 ```
 
-This creates a bundled, ES5-compatible version of the app that works on iOS 9 Safari. The app will automatically detect if ES6 modules are supported and use the appropriate version.
+This creates a bundled, ES5-compatible version of the app that works on iOS 9 Safari. The build process:
+1. Bundles the code with Bun
+2. Transpiles to ES5 with Babel for iOS 9 compatibility
+3. Adds necessary polyfills via core-js
+
+The app will automatically detect if ES6 modules are supported and use the appropriate version:
+- Modern browsers: Use ES modules (`/src/index.tsx`)
+- iOS 9 and older: Use bundled version (`/dist/index.js`)
+
+**Note:** React 19 may have limited compatibility with iOS 9. If you encounter issues, consider:
+- Using React 16 or 17 for better iOS 9 support
+- Testing with Safari Web Inspector on a Mac connected to the iPad
+- Checking browser console for specific error messages
 
 ## Features
 

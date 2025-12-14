@@ -13,7 +13,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "lib": ["ES5", "ES2015", "DOM", "DOM.Iterable"]
+    "lib": [
+      "ES5",
+      "ES2015",
+      "DOM",
+      "DOM.Iterable"
+    ]
   },
   "include": [
     "**/*"
