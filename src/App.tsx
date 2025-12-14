@@ -1103,6 +1103,7 @@ export default function App() {
               <span style={styles.volumeLabel}>{Math.round((playerState.volume / (playerState.volumeMax || 100)) * 100)}%</span>
             </div>
           </div>
+          </>
         ) : (
           <div style={styles.placeholder}>
             <p>Waiting for playback...</p>
