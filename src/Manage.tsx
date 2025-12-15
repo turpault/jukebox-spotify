@@ -1057,8 +1057,8 @@ export default function Manage() {
                   return validTracks.length > 0 && (
                     <div style={{ marginBottom: '30px' }}>
                       <h4 style={{ ...styles.cardTitle, fontSize: '1.1rem', marginBottom: '15px' }}>Tracks</h4>
-                      {validTracks.map((track: any) => (
-                        <div key={track.id} style={styles.actionRow}>
+                      {validTracks.map((track: any, index: number) => (
+                        <div key={track.id || `track-${index}`} style={styles.actionRow}>
                           <div style={{ flex: 1 }}>
                             <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
                               {track.name || 'Unknown'}
@@ -1088,8 +1088,8 @@ export default function Manage() {
                   return validAlbums.length > 0 && (
                     <div style={{ marginBottom: '30px' }}>
                       <h4 style={{ ...styles.cardTitle, fontSize: '1.1rem', marginBottom: '15px' }}>Albums</h4>
-                      {validAlbums.map((album: any) => (
-                        <div key={album.id} style={styles.actionRow}>
+                      {validAlbums.map((album: any, index: number) => (
+                        <div key={album.id || `album-${index}`} style={styles.actionRow}>
                           <div style={{ flex: 1 }}>
                             <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
                               {album.name || 'Unknown'}
@@ -1119,8 +1119,8 @@ export default function Manage() {
                   return validPlaylists.length > 0 && (
                     <div style={{ marginBottom: '30px' }}>
                       <h4 style={{ ...styles.cardTitle, fontSize: '1.1rem', marginBottom: '15px' }}>Playlists</h4>
-                      {validPlaylists.map((playlist: any) => (
-                        <div key={playlist.id} style={styles.actionRow}>
+                      {validPlaylists.map((playlist: any, index: number) => (
+                        <div key={playlist.id || `playlist-${index}`} style={styles.actionRow}>
                           <div style={{ flex: 1 }}>
                             <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
                               {playlist.name || 'Unknown'}
@@ -1150,8 +1150,8 @@ export default function Manage() {
                   return validArtists.length > 0 && (
                     <div style={{ marginBottom: '30px' }}>
                       <h4 style={{ ...styles.cardTitle, fontSize: '1.1rem', marginBottom: '15px' }}>Artists</h4>
-                      {validArtists.map((artist: any) => (
-                        <div key={artist.id} style={styles.actionRow}>
+                      {validArtists.map((artist: any, index: number) => (
+                        <div key={artist.id || `artist-${index}`} style={styles.actionRow}>
                           <div style={{ flex: 1 }}>
                             <div style={{ color: theme.colors.text, fontWeight: 'bold', fontFamily: theme.fonts.primary }}>
                               {artist.name || 'Unknown'}
