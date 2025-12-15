@@ -363,11 +363,6 @@ async function fetchSpotifyMetadata(id: string, token: string | null): Promise<{
     const cached = await readFromCache<{ id: string; name: string; type: string; imageUrl: string }>(id);
     if (cached) {
       console.log(`Using cached metadata for ${id}`);
-      // Get cached artwork URL if available
-      if (cached.imageUrl) {
-        const cachedArtworkUrl = await getCachedArtworkUrl(id, cached.imageUrl);
-        return { ...cached, imageUrl: cachedArtworkUrl };
-      }
       return cached;
     }
 
@@ -409,16 +404,7 @@ async function fetchSpotifyMetadata(id: string, token: string | null): Promise<{
       imageUrl = data.images?.[0]?.url || data.images?.[1]?.url || '';
     }
 
-    // Cache artwork if available
-    let cachedImageUrl = imageUrl;
-    if (imageUrl) {
-      const cached = await cacheArtwork(id, imageUrl);
-      if (cached) {
-        cachedImageUrl = cached;
-      }
-    }
-
-    const result = { id, name: displayName, type, imageUrl: cachedImageUrl };
+    const result = { id, name: displayName, type, imageUrl };
     
     // Cache the metadata to disk
     await writeToCache(id, result);
