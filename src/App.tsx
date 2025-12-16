@@ -650,7 +650,8 @@ export default function App() {
         <div style={{
           position: 'absolute',
           top: '20px',
-          right: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
           zIndex: 1000,
         }}>
           <select
@@ -758,7 +759,8 @@ export default function App() {
         <div style={{
           position: 'absolute',
           top: '20px',
-          right: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
           zIndex: 1000,
         }}>
           <select
