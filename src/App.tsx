@@ -466,15 +466,6 @@ export default function App() {
             if (state.isPaused !== undefined) newState.isPaused = state.isPaused;
             if (state.currentTrack !== undefined) {
               newState.currentTrack = state.currentTrack;
-              // Extract artist URI and add to Quick Add list
-              if (state.currentTrack?.uri && state.currentTrack?.artist_names && state.currentTrack.artist_names.length > 0) {
-                // Parse track URI to get artist ID
-                const trackUriParts = state.currentTrack.uri.split(':');
-                if (trackUriParts.length >= 3 && trackUriParts[0] === 'spotify' && trackUriParts[1] === 'track') {
-                  // Fetch track details to get artist URI
-                  fetchTrackArtistUri(state.currentTrack.uri);
-                }
-              }
             }
             if (state.position !== undefined) newState.position = state.position;
             if (state.duration !== undefined) newState.duration = state.duration;
@@ -814,6 +805,19 @@ export default function App() {
       return () => clearInterval(interval);
     }
   }, [playerState.isPaused, playerState.isActive, playerState.duration]);
+
+  // Fetch artist URI when track changes (side effect moved out of state updater)
+  useEffect(() => {
+    const currentTrack = playerState.currentTrack;
+    if (currentTrack?.uri && currentTrack?.artist_names && currentTrack.artist_names.length > 0) {
+      // Parse track URI to get artist ID
+      const trackUriParts = currentTrack.uri.split(':');
+      if (trackUriParts.length >= 3 && trackUriParts[0] === 'spotify' && trackUriParts[1] === 'track') {
+        // Fetch track details to get artist URI
+        fetchTrackArtistUri(currentTrack.uri);
+      }
+    }
+  }, [playerState.currentTrack?.uri, fetchTrackArtistUri]);
 
   // Update document body background when theme changes
   useEffect(() => {
