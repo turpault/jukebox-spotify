@@ -98,12 +98,12 @@ export function SpotifyIdsList({ items, title, sidebarStyle, theme, styles, isMo
   // Fetch metadata for all items when they change
   useEffect(() => {
     items.forEach(id => {
+      // Use a ref-like check by reading current state in the callback
       setMetadataCache(prev => {
-        if (prev.has(id)) {
-          return prev; // Already cached
+        if (!prev.has(id)) {
+          // Trigger fetch (async, doesn't need to be in setState)
+          fetchMetadata(id);
         }
-        // Trigger fetch (async, doesn't need to be in setState)
-        fetchMetadata(id);
         return prev;
       });
     });
