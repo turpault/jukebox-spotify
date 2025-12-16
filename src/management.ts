@@ -105,7 +105,8 @@ export function logRequest(request: Request, server: any) {
 }
 
 // Kiosk mode handler
-export async function handleGetKiosk(request: Request, server: any, isKioskMode: boolean) {
+export async function handleGetKiosk(request: Request) {
+  const isKioskMode = process.env.KIOSK === "1" || process.env.KIOSK === "true";
   const traceContext = traceApiStart('GET', '/api/kiosk', 'inbound');
   try {
     traceApiEnd(traceContext, 200, { kiosk: isKioskMode });
@@ -117,8 +118,7 @@ export async function handleGetKiosk(request: Request, server: any, isKioskMode:
 }
 
 // Config version handler
-export async function handleGetConfigVersion(request: Request, server: any) {
-  logRequest(request, server);
+export async function handleGetConfigVersion(request) {
   const traceContext = traceApiStart('GET', '/api/config/version', 'inbound');
   try {
     const version = await getConfigVersion();

@@ -24,3 +24,18 @@ export async function handlePostErrors(req: Request) {
   }
 }
 
+// Console logging route handler
+export async function handlePostConsole(req: Request) {
+  try {
+    const data = await req.json();
+    
+    // Log to console.info
+    console.info("[CONSOLE]", data);
+
+    return Response.json({ success: true });
+  } catch (error) {
+    console.error("[CONSOLE HANDLER] Failed to process console data:", error);
+    return Response.json({ success: false, error: "Failed to process console data" }, { status: 500 });
+  }
+}
+

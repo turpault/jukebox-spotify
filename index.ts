@@ -45,7 +45,7 @@ import {
   handlePostShuffleContext,
   handlePostAddToQueue,
 } from "./src/librespot";
-import { handlePostErrors } from "./src/errors";
+import { handlePostErrors, handlePostConsole } from "./src/errors";
 import { librespotStateService } from "./src/librespot-state"; // Initialize state service
 
 // Ensure go-librespot connection is established on server startup
@@ -63,111 +63,124 @@ if (isKioskMode) {
   }, 1000);
 }
 
+function logRequest(request: Request, server) {
+  const url = new URL(request.url);
+  console.log("Request: " + request.method + " " + url.pathname + " Source IP Address: " + server.requestIP(request).address);
+}
+
+function wrapHandler(handler: (request: Request) => Promise<Response>) {
+  return async (request: Request, server) => {
+    logRequest(request, server);
+    return handler(request);
+  }
+}
+
 serve({
   port: 3000,
   idleTimeout: 40, // Allow long polling requests (30s timeout) with buffer
-  fetch: async (req: Request, server) => {
-    // All requests are handled by routes
-    return new Response(null, { status: 404 });
-  },
+  fetch: wrapHandler(async (request: Request) => new Response(null, { status: 404 })),
   routes: {
     // Management routes
     "/api/kiosk": {
-      GET: (req: Request, server) => handleGetKiosk(req, server, isKioskMode),
+      GET: wrapHandler(handleGetKiosk),
     },
     "/api/config/version": {
-      GET: (req: Request, server) => handleGetConfigVersion(req, server),
+      GET: wrapHandler(handleGetConfigVersion),
     },
     "/api/hotkeys": {
-      GET: handleGetHotkeys,
-      POST: handlePostHotkeys,
+      GET: wrapHandler(handleGetHotkeys),
+      POST: wrapHandler(handlePostHotkeys),
     },
     "/api/theme": {
-      GET: handleGetTheme,
-      POST: handlePostTheme,
+      GET: wrapHandler(handleGetTheme),
+      POST: wrapHandler(handlePostTheme),
     },
     "/api/view": {
-      GET: handleGetView,
-      POST: handlePostView,
+      GET: wrapHandler(handleGetView),
+      POST: wrapHandler(handlePostView),
     },
     "/api/stats": {
-      GET: handleGetStats,
+      GET: wrapHandler(handleGetStats),
     },
     // Librespot routes
     "/api/events": {
-      GET: handleGetEvents,
+      GET: wrapHandler(handleGetEvents),
     },
     "/status": {
-      GET: handleGetStatus,
+      GET: wrapHandler(handleGetStatus),
     },
     "/player/playpause": {
-      POST: handlePostPlayPause,
+      POST: wrapHandler(handlePostPlayPause),
     },
     "/player/next": {
-      POST: handlePostNext,
+      POST: wrapHandler(handlePostNext),
     },
     "/player/prev": {
-      POST: handlePostPrev,
+      POST: wrapHandler(handlePostPrev),
     },
     "/player/volume": {
-      POST: handlePostVolume,
+      POST: wrapHandler(handlePostVolume),
     },
     "/player/seek": {
-      POST: handlePostSeek,
+      POST: wrapHandler(handlePostSeek),
     },
     "/player/repeat_context": {
-      POST: handlePostRepeatContext,
+      POST: wrapHandler(handlePostRepeatContext),
     },
     "/player/repeat_track": {
-      POST: handlePostRepeatTrack,
+      POST: wrapHandler(handlePostRepeatTrack),
     },
     "/player/shuffle_context": {
-      POST: handlePostShuffleContext,
+      POST: wrapHandler(handlePostShuffleContext),
     },
     "/player/add_to_queue": {
-      POST: handlePostAddToQueue,
+      POST: wrapHandler(handlePostAddToQueue),
     },
     // Spotify routes
     "/api/spotify/tracks/:id": {
-      GET: handleGetTrack,
+      GET: wrapHandler(handleGetTrack),
     },
     "/api/spotify/albums/:id/tracks": {
-      GET: handleGetAlbumTracks,
+      GET: wrapHandler(handleGetAlbumTracks),
     },
     "/api/spotify/playlists/:id/tracks": {
-      GET: handleGetPlaylistTracks,
+      GET: wrapHandler(handleGetPlaylistTracks),
     },
     "/api/spotify/artists/:id/top-tracks": {
-      GET: handleGetArtistTopTracks,
+      GET: wrapHandler(handleGetArtistTopTracks),
     },
     "/api/spotify/metadata/:id": {
-      GET: handleGetMetadata,
+      GET: wrapHandler(handleGetMetadata),
     },
     "/api/spotify/ids": {
-      GET: handleGetSpotifyIds,
-      POST: handlePostSpotifyIds,
+      GET: wrapHandler(handleGetSpotifyIds),
+      POST: wrapHandler(handlePostSpotifyIds),
     },
     "/api/spotify/recent-artists": {
       GET: handleGetRecentArtists,
-      POST: handlePostRecentArtists,
+      POST: wrapHandler(handlePostRecentArtists),
       DELETE: handleDeleteRecentArtists,
     },
     "/api/spotify/search": {
-      GET: handleGetSearch,
+      GET: wrapHandler(handleGetSearch),
     },
     "/api/spotify/config": {
-      POST: handlePostSpotifyConfig,
+      POST: wrapHandler(handlePostSpotifyConfig),
     },
     "/api/spotify/recent-artists-limit": {
-      GET: handleGetRecentArtistsLimit,
-      POST: handlePostRecentArtistsLimit,
+      GET: wrapHandler(handleGetRecentArtistsLimit),
+      POST: wrapHandler(handlePostRecentArtistsLimit),
     },
     "/api/image/:base64EncodedImageUrl": {
-      GET: handleGetImage,
+      GET: wrapHandler(handleGetImage),
     },
     // Error routes
     "/api/errors": {
-      POST: handlePostErrors,
+      POST: wrapHandler(handlePostErrors),
+    },
+    // Console route
+    "/api/console": {
+      POST: wrapHandler(handlePostConsole),
     },
     // HTML routes
     "/manage": manageHtml,
