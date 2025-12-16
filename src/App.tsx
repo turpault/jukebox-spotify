@@ -672,12 +672,99 @@ export default function App() {
             <option value="matrix">Matrix</option>
           </select>
         </div>
-        <div style={styles.loadingContent}>
+        <div style={{
+          ...styles.loadingContent,
+          maxWidth: isMobile ? '95%' : '800px',
+          padding: isMobile ? '20px' : '40px',
+        }}>
           <h1 style={styles.title}>Jukebox</h1>
-          <div style={styles.spinnerContainer}>
-            <div style={styles.spinner}></div>
+          <div style={{
+            background: theme.colors.surface,
+            borderRadius: theme.effects.borderRadius,
+            border: `2px solid ${theme.colors.border}`,
+            padding: isMobile ? '20px' : '30px',
+            boxShadow: theme.effects.shadow,
+            width: '100%',
+            boxSizing: 'border-box',
+          }}>
+            <h2 style={{
+              color: theme.colors.text,
+              fontFamily: theme.fonts.title,
+              fontSize: isMobile ? '1.5rem' : '2rem',
+              marginTop: 0,
+              marginBottom: '20px',
+              textAlign: 'center',
+            }}>
+              No Spotify Connect Instance Connected
+            </h2>
+            <p style={{
+              color: theme.colors.textSecondary,
+              fontSize: isMobile ? '0.9rem' : '1.1rem',
+              lineHeight: '1.6',
+              marginBottom: '30px',
+              textAlign: 'center',
+            }}>
+              To use this jukebox, you need to connect a Spotify Connect device from the Spotify app.
+            </p>
+            
+            <div style={{
+              marginTop: '30px',
+            }}>
+              <h3 style={{
+                color: theme.colors.primary,
+                fontFamily: theme.fonts.title,
+                fontSize: isMobile ? '1.2rem' : '1.5rem',
+                marginBottom: '20px',
+                borderBottom: `2px solid ${theme.colors.border}`,
+                paddingBottom: '10px',
+              }}>
+                How to Connect:
+              </h3>
+              
+              <ol style={{
+                color: theme.colors.text,
+                fontSize: isMobile ? '0.9rem' : '1rem',
+                lineHeight: '2',
+                paddingLeft: '20px',
+                margin: 0,
+              }}>
+                <li style={{ marginBottom: '15px' }}>
+                  <strong>Open the Spotify app</strong> on your phone, tablet, or computer
+                </li>
+                <li style={{ marginBottom: '15px' }}>
+                  <strong>Start playing any song</strong> or open a playlist/album
+                </li>
+                <li style={{ marginBottom: '15px' }}>
+                  <strong>Tap the "Devices Available" button</strong> (looks like a speaker or computer icon) at the bottom of the Now Playing screen
+                </li>
+                <li style={{ marginBottom: '15px' }}>
+                  <strong>Select "Jukebox"</strong> or the name of your go-librespot instance from the list of available devices
+                </li>
+                <li style={{ marginBottom: '15px' }}>
+                  <strong>Your music will start playing</strong> through the jukebox, and you'll see it appear here!
+                </li>
+              </ol>
+              
+              <div style={{
+                marginTop: '30px',
+                padding: '20px',
+                background: `linear-gradient(135deg, ${theme.colors.surface} 0%, ${theme.colors.border} 100%)`,
+                borderRadius: theme.effects.borderRadius,
+                border: `1px solid ${theme.colors.border}`,
+              }}>
+                <p style={{
+                  color: theme.colors.text,
+                  fontSize: isMobile ? '0.85rem' : '0.95rem',
+                  margin: 0,
+                  fontStyle: 'italic',
+                  textAlign: 'center',
+                }}>
+                  💡 <strong>Tip:</strong> Make sure go-librespot is running and visible as a Spotify Connect device. 
+                  The device name will appear in your Spotify app's device list.
+                </p>
+              </div>
+            </div>
           </div>
-          <p style={styles.statusMessage}>{statusMessage}</p>
         </div>
       </div>
     );

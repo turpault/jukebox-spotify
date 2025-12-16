@@ -208,7 +208,7 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     repeatTrack: false,
     shuffleContext: false,
   });
-  const [statusMessage, setStatusMessageState] = useState("Connecting to go-librespot...");
+  const [statusMessage, setStatusMessageState] = useState("No Spotify Connect instance connected");
 
   // Wrapper to support both string and function updates
   const setStatusMessage = useCallback((message: string | ((prev: string) => string)) => {
@@ -388,9 +388,9 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
 
         setIsConnected(result.connected || false);
         if (result.connected) {
-          setStatusMessage("Connected to go-librespot");
+          setStatusMessage("Connected");
         } else {
-          setStatusMessage("Reconnecting...");
+          setStatusMessage("No Spotify Connect instance connected");
         }
 
         if (result.version !== undefined) {
