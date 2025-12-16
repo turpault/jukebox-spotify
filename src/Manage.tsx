@@ -481,6 +481,13 @@ export default function Manage() {
   };
 
   const handleButtonCapture = (action: string) => {
+    // Check if gamepad API is available (not available in iOS 9)
+    if (typeof navigator.getGamepads !== 'function') {
+      alert('Gamepad support is not available in this browser.');
+      setCapturingButton(null);
+      return;
+    }
+    
     setCapturingButton(action);
     const pollGamepads = () => {
       const gamepads = navigator.getGamepads();
@@ -780,18 +787,19 @@ export default function Manage() {
           </div>
         </div>
 
-        {/* Gamepad Hotkeys */}
-        <div style={{ ...styles.card, marginBottom: '40px' }}>
-          <h2 style={styles.cardTitle}>Gamepad Hotkeys</h2>
-          <p style={styles.helpText}>
-            Connect a USB gamepad and click a button to capture the gamepad button number.
-          </p>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: '15px',
-          }}>
-            {gamepadActions.map((action) => (
+        {/* Gamepad Hotkeys - Only show if gamepad API is available */}
+        {typeof navigator.getGamepads === 'function' && (
+          <div style={{ ...styles.card, marginBottom: '40px' }}>
+            <h2 style={styles.cardTitle}>Gamepad Hotkeys</h2>
+            <p style={styles.helpText}>
+              Connect a USB gamepad and click a button to capture the gamepad button number.
+            </p>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+              gap: '15px',
+            }}>
+              {gamepadActions.map((action) => (
               <div key={action.key} style={styles.actionRow}>
                 <span style={styles.actionLabel}>{action.label}:</span>
                 <button
@@ -811,6 +819,7 @@ export default function Manage() {
             ))}
           </div>
         </div>
+        )}
 
         {/* API Statistics */}
         <div style={{ ...styles.card, marginBottom: '40px' }}>

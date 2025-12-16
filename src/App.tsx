@@ -451,6 +451,11 @@ export default function App() {
   // Gamepad hotkey handler
   useEffect(() => {
     if (!hotkeys) return;
+    
+    // Check if gamepad API is available (not available in iOS 9)
+    if (typeof navigator.getGamepads !== 'function') {
+      return;
+    }
 
     const pollGamepads = () => {
       const gamepads = navigator.getGamepads();
