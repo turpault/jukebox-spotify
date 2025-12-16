@@ -738,7 +738,7 @@ export default function App() {
                   <strong>Tap the "Devices Available" button</strong> (looks like a speaker or computer icon) at the bottom of the Now Playing screen
                 </li>
                 <li style={{ marginBottom: '15px' }}>
-                  <strong>Select "Jukebox"</strong> or the name of your go-librespot instance from the list of available devices
+                  <strong>Select "Jukebox"</strong> from the list of available devices
                 </li>
                 <li style={{ marginBottom: '15px' }}>
                   <strong>Your music will start playing</strong> through the jukebox, and you'll see it appear here!
