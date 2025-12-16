@@ -69,7 +69,6 @@ const traceContexts = new Map<string, { startTime: number; method: string; endpo
 const logREST = (method: string, endpoint: string, data?: any, response?: any, error?: any) => {
   const timestamp = new Date().toISOString();
   const traceId = generateTraceId();
-
   if (error) {
     const duration = traceContexts.get(traceId) ? Date.now() - traceContexts.get(traceId)!.startTime : undefined;
     console.error(`[TRACE] [${timestamp}] [${traceId}] ERROR: API request failed`, {
@@ -125,7 +124,6 @@ const logREST = (method: string, endpoint: string, data?: any, response?: any, e
 const logPlayerEvent = (event: string, data?: any, error?: any) => {
   const timestamp = new Date().toISOString();
   const traceId = generateTraceId();
-
   if (error) {
     console.error(`[TRACE] [${timestamp}] [${traceId}] ERROR: Player event ${event}`, {
       timestamp,
@@ -633,6 +631,26 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     fetchView();
     fetchHotkeys();
     fetchPlaybackStatus();
+
+    // Check connection status immediately (before starting long polling)
+    const checkInitialConnection = async () => {
+      try {
+        const response = await fetch(`/api/events?version=0&timeout=100`);
+        if (response.ok) {
+          const result = await response.json();
+          setIsConnected(result.connected === true);
+          if (result.connected) {
+            setStatusMessage("Connected");
+          } else {
+            setStatusMessage("No Spotify Connect instance connected");
+          }
+        }
+      } catch (error) {
+        // Ignore errors from initial check, will be handled by polling
+        console.warn('Initial connection check failed:', error);
+      }
+    };
+    checkInitialConnection();
 
     // Start polling - handle errors properly
     const startPolling = async () => {

@@ -364,13 +364,13 @@ export default function Manage() {
 
   // Update document body background when theme changes
   useEffect(() => {
-    const bgColor = theme.colors.background.includes('gradient') 
+    const bgColor = theme.colors.background.includes('gradient')
       ? '#000000'
       : theme.colors.background;
-    
+
     document.body.style.background = bgColor;
     document.body.style.color = theme.colors.text;
-    
+
     return () => {
       document.body.style.background = '';
       document.body.style.color = '';
@@ -487,7 +487,7 @@ export default function Manage() {
       setCapturingButton(null);
       return;
     }
-    
+
     setCapturingButton(action);
     const pollGamepads = () => {
       const gamepads = navigator.getGamepads();
@@ -561,7 +561,7 @@ export default function Manage() {
       marginBottom: '40px',
       textAlign: 'center' as const,
       color: theme.colors.primary,
-      textShadow: theme.name === 'Matrix' 
+      textShadow: theme.name === 'Matrix'
         ? `0 0 20px ${theme.colors.primary}, 0 0 40px ${theme.colors.primary}`
         : `0 0 30px rgba(212, 175, 55, 0.5)`,
       fontFamily: theme.fonts.title,
@@ -647,8 +647,8 @@ export default function Manage() {
       justifyContent: 'space-between',
       alignItems: 'center',
       padding: '10px',
-      background: theme.name === 'Matrix' 
-        ? 'rgba(0, 0, 0, 0.5)' 
+      background: theme.name === 'Matrix'
+        ? 'rgba(0, 0, 0, 0.5)'
         : 'rgba(61, 40, 23, 0.5)',
       borderRadius: theme.effects.borderRadius,
       border: `1px solid ${theme.colors.border}`,
@@ -800,25 +800,25 @@ export default function Manage() {
               gap: '15px',
             }}>
               {gamepadActions.map((action) => (
-              <div key={action.key} style={styles.actionRow}>
-                <span style={styles.actionLabel}>{action.label}:</span>
-                <button
-                  onClick={() => handleButtonCapture(action.key)}
-                  style={{
-                    ...styles.buttonSmall,
-                    ...(capturingButton === action.key ? styles.buttonSmallActive : {}),
-                  }}
-                >
-                  {capturingButton === action.key
-                    ? 'Press button...'
-                    : hotkeys?.gamepad[action.key as keyof typeof hotkeys.gamepad] !== undefined
-                    ? `Button ${hotkeys.gamepad[action.key as keyof typeof hotkeys.gamepad]}`
-                    : 'Not set'}
-                </button>
-              </div>
-            ))}
+                <div key={action.key} style={styles.actionRow}>
+                  <span style={styles.actionLabel}>{action.label}:</span>
+                  <button
+                    onClick={() => handleButtonCapture(action.key)}
+                    style={{
+                      ...styles.buttonSmall,
+                      ...(capturingButton === action.key ? styles.buttonSmallActive : {}),
+                    }}
+                  >
+                    {capturingButton === action.key
+                      ? 'Press button...'
+                      : hotkeys?.gamepad[action.key as keyof typeof hotkeys.gamepad] !== undefined
+                        ? `Button ${hotkeys.gamepad[action.key as keyof typeof hotkeys.gamepad]}`
+                        : 'Not set'}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
         )}
 
         {/* API Statistics */}
@@ -949,7 +949,7 @@ export default function Manage() {
                           <span style={styles.actionLabel}>
                             {status} {status === '200' ? '✓' : status.startsWith('4') || status.startsWith('5') ? '✗' : ''}:
                           </span>
-                          <span style={{ 
+                          <span style={{
                             color: status === '200' ? theme.colors.primary : status.startsWith('4') || status.startsWith('5') ? '#FF4444' : theme.colors.textSecondary,
                             fontFamily: theme.fonts.primary,
                             fontWeight: 'bold'

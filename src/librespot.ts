@@ -61,6 +61,7 @@ export function createLibrespotRoutes() {
     // Proxy go-librespot REST API endpoints
     "/status": {
       GET: async (req: Request) => {
+        console.log("GET /status");
         const traceContext = traceApiStart('GET', '/status', 'inbound');
         try {
           const response = await proxyToLibrespot('/status', 'GET');
