@@ -121,28 +121,29 @@ const logREST = (method: string, endpoint: string, data?: any, response?: any, e
   }
 };
 
-const logWebSocket = (event: string, data?: any, error?: any) => {
+// Log player events (not WebSocket - frontend uses HTTP long polling)
+const logPlayerEvent = (event: string, data?: any, error?: any) => {
   const timestamp = new Date().toISOString();
   const traceId = generateTraceId();
 
   if (error) {
-    console.error(`[TRACE] [${timestamp}] [${traceId}] ERROR: WebSocket ${event}`, {
+    console.error(`[TRACE] [${timestamp}] [${traceId}] ERROR: Player event ${event}`, {
       timestamp,
       traceId,
       level: 'error',
-      message: `WebSocket ${event}`,
+      message: `Player event ${event}`,
       direction: 'outbound',
-      type: 'websocket',
+      type: 'player',
       error: error instanceof Error ? error.message : String(error),
     });
   } else {
-    console.log(`[TRACE] [${timestamp}] [${traceId}] INFO: WebSocket ${event}`, {
+    console.log(`[TRACE] [${timestamp}] [${traceId}] INFO: Player event ${event}`, {
       timestamp,
       traceId,
       level: 'info',
-      message: `WebSocket ${event}`,
+      message: `Player event ${event}`,
       direction: 'outbound',
-      type: 'websocket',
+      type: 'player',
       data: data ? (typeof data === 'string' ? data : JSON.stringify(data)) : undefined,
     });
   }
@@ -272,12 +273,12 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
   }, [setStatusMessage]);
 
   const fetchPlaybackStatus = useCallback(async () => {
-    logWebSocket('Fetching playback status');
+    logPlayerEvent('Fetching playback status');
     try {
       const status = await apiCall('/status');
 
       if (status) {
-        logWebSocket('Playback status received', status);
+        logPlayerEvent('Playback status received', status);
         setPlayerState(prev => ({
           ...prev,
           currentTrack: status.track ? {
@@ -297,10 +298,10 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
           shuffleContext: status.shuffle_context === true,
         }));
       } else {
-        logWebSocket('No playback status available');
+        logPlayerEvent('No playback status available');
       }
     } catch (error) {
-      logWebSocket('Error fetching playback status', null, error);
+      logPlayerEvent('Error fetching playback status', null, error);
     }
   }, [apiCall]);
 
@@ -372,7 +373,7 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
 
       try {
         const url = `/api/events?version=${stateVersionRef.current}&timeout=30000`;
-        logWebSocket('Polling for events', { version: stateVersionRef.current });
+        logPlayerEvent('Polling for events', { version: stateVersionRef.current });
 
         const response = await fetch(url, {
           signal: abortController.signal,
@@ -383,7 +384,7 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
         }
 
         const result = await response.json();
-        logWebSocket('Events received', result);
+        logPlayerEvent('Events received', result);
 
         setIsConnected(result.connected || false);
         if (result.connected) {
@@ -422,9 +423,9 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
           return;
         }
 
-        logWebSocket('Poll error', null, error);
+        logPlayerEvent('Poll error', null, error);
         setIsConnected(false);
-        
+
         // Provide more informative error messages
         const errorMessage = error instanceof Error ? error.message : String(error);
         if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
@@ -541,47 +542,47 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
 
   // Player actions
   const togglePlay = useCallback(async () => {
-    logWebSocket('User action: Toggle play/pause');
+    logPlayerEvent('User action: Toggle play/pause');
     await apiCall('/player/playpause', 'POST');
   }, [apiCall]);
 
   const nextTrack = useCallback(async () => {
-    logWebSocket('User action: Next track');
+    logPlayerEvent('User action: Next track');
     await apiCall('/player/next', 'POST');
   }, [apiCall]);
 
   const previousTrack = useCallback(async () => {
-    logWebSocket('User action: Previous track');
+    logPlayerEvent('User action: Previous track');
     await apiCall('/player/prev', 'POST');
   }, [apiCall]);
 
   const setVolume = useCallback(async (volume: number) => {
-    logWebSocket('User action: Set volume', { volume });
+    logPlayerEvent('User action: Set volume', { volume });
     await apiCall('/player/volume', 'POST', { volume });
   }, [apiCall]);
 
   const seek = useCallback(async (position: number) => {
-    logWebSocket('User action: Seek', { position });
+    logPlayerEvent('User action: Seek', { position });
     await apiCall('/player/seek', 'POST', { position });
   }, [apiCall]);
 
   const toggleRepeat = useCallback(async () => {
     if (!playerState.repeatContext && !playerState.repeatTrack) {
-      logWebSocket('User action: Enable repeat context');
+      logPlayerEvent('User action: Enable repeat context');
       await apiCall('/player/repeat_context', 'POST', { repeat_context: true });
     } else if (playerState.repeatContext && !playerState.repeatTrack) {
-      logWebSocket('User action: Switch to repeat track');
+      logPlayerEvent('User action: Switch to repeat track');
       await apiCall('/player/repeat_context', 'POST', { repeat_context: false });
       await apiCall('/player/repeat_track', 'POST', { repeat_track: true });
     } else {
-      logWebSocket('User action: Disable repeat');
+      logPlayerEvent('User action: Disable repeat');
       await apiCall('/player/repeat_track', 'POST', { repeat_track: false });
     }
   }, [apiCall, playerState.repeatContext, playerState.repeatTrack]);
 
   const toggleShuffle = useCallback(async () => {
     const newValue = !playerState.shuffleContext;
-    logWebSocket('User action: Toggle shuffle', { shuffle_context: newValue });
+    logPlayerEvent('User action: Toggle shuffle', { shuffle_context: newValue });
     await apiCall('/player/shuffle_context', 'POST', { shuffle_context: newValue });
   }, [apiCall, playerState.shuffleContext]);
 
@@ -594,7 +595,7 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     fetchSpotifyIds();
     fetchRecentArtists();
     fetchPlaybackStatus();
-    
+
     // Start polling - handle errors properly
     const startPolling = async () => {
       try {

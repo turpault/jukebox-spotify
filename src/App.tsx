@@ -190,28 +190,29 @@ const logREST = (method: string, endpoint: string, data?: any, response?: any, e
   }
 };
 
-const logWebSocket = (event: string, data?: any, error?: any) => {
+// Log player events (not WebSocket - frontend uses HTTP long polling)
+const logPlayerEvent = (event: string, data?: any, error?: any) => {
   const timestamp = new Date().toISOString();
   const traceId = generateTraceId();
 
   if (error) {
-    console.error(`[TRACE] [${timestamp}] [${traceId}] ERROR: WebSocket ${event}`, {
+    console.error(`[TRACE] [${timestamp}] [${traceId}] ERROR: Player event ${event}`, {
       timestamp,
       traceId,
       level: 'error',
-      message: `WebSocket ${event}`,
+      message: `Player event ${event}`,
       direction: 'outbound',
-      type: 'websocket',
+      type: 'player',
       error: error instanceof Error ? error.message : String(error),
     });
   } else {
-    console.log(`[TRACE] [${timestamp}] [${traceId}] INFO: WebSocket ${event}`, {
+    console.log(`[TRACE] [${timestamp}] [${traceId}] INFO: Player event ${event}`, {
       timestamp,
       traceId,
       level: 'info',
-      message: `WebSocket ${event}`,
+      message: `Player event ${event}`,
       direction: 'outbound',
-      type: 'websocket',
+      type: 'player',
       data: data ? (typeof data === 'string' ? data : JSON.stringify(data)) : undefined,
     });
   }
