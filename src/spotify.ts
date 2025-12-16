@@ -29,12 +29,12 @@ function getCacheFilePath(spotifyId: string, suffix: string = 'json'): string {
 function getArtworkCachePath(spotifyId: string, imageUrl: string): string {
   const urlHash = createHash('md5').update(imageUrl).digest('hex');
   const idHash = createHash('md5').update(spotifyId).digest('hex');
-  
+
   // Extract file extension from URL properly
   // Remove query parameters first
   const urlWithoutQuery = imageUrl.split('?')[0];
   let ext = 'jpg'; // Default to jpg
-  
+
   try {
     // Try to parse as URL to get pathname
     const urlObj = new URL(urlWithoutQuery);
@@ -53,7 +53,7 @@ function getArtworkCachePath(spotifyId: string, imageUrl: string): string {
       ext = simpleExt;
     }
   }
-  
+
   return join(CACHE_DIR, `artwork_${idHash}_${urlHash}.${ext}`);
 }
 
@@ -75,11 +75,11 @@ async function ensureBase64CacheDir(): Promise<void> {
 // Fetch image and convert to base64, with caching
 async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
   if (!imageUrl) return null;
-  
+
   try {
     await ensureBase64CacheDir();
     const cachePath = getBase64CachePath(imageUrl);
-    
+
     // Check if already cached
     try {
       const cached = await readFile(cachePath, 'utf-8');
@@ -94,34 +94,34 @@ async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
     } catch {
       // Cache doesn't exist, continue to fetch
     }
-    
+
     // Fetch image
     const response = await fetch(imageUrl);
     if (!response.ok) {
       return null;
     }
-    
+
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const base64 = buffer.toString('base64');
-    
+
     // Determine content type from response or URL
-    const contentType = response.headers.get('content-type') || 
-                       (imageUrl.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' :
-                        imageUrl.match(/\.png$/i) ? 'image/png' :
-                        imageUrl.match(/\.gif$/i) ? 'image/gif' :
-                        imageUrl.match(/\.webp$/i) ? 'image/webp' :
-                        'image/jpeg');
-    
+    const contentType = response.headers.get('content-type') ||
+      (imageUrl.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' :
+        imageUrl.match(/\.png$/i) ? 'image/png' :
+          imageUrl.match(/\.gif$/i) ? 'image/gif' :
+            imageUrl.match(/\.webp$/i) ? 'image/webp' :
+              'image/jpeg');
+
     const dataUri = `data:${contentType};base64,${base64}`;
-    
+
     // Cache the base64 data
     await writeFile(cachePath, JSON.stringify({
       base64: dataUri,
       timestamp: Date.now(),
       contentType,
     }), 'utf-8');
-    
+
     return dataUri;
   } catch (error) {
     console.error(`Failed to fetch image as base64 for ${imageUrl}:`, error);
@@ -135,7 +135,7 @@ async function readFromCache<T>(cacheKey: string): Promise<T | null> {
     await ensureCacheDir();
     const cachePath = getCacheFilePath(cacheKey);
     const stats = await stat(cachePath);
-    
+
     // Check if cache is expired
     const age = Date.now() - stats.mtimeMs;
     if (age > CACHE_DURATION) {
@@ -148,7 +148,7 @@ async function readFromCache<T>(cacheKey: string): Promise<T | null> {
       }
       return null; // Cache expired
     }
-    
+
     const data = await readFile(cachePath, 'utf-8');
     return JSON.parse(data) as T;
   } catch (error) {
@@ -171,11 +171,11 @@ async function writeToCache<T>(cacheKey: string, data: T): Promise<void> {
 // Cache artwork image
 async function cacheArtwork(spotifyId: string, imageUrl: string): Promise<string | null> {
   if (!imageUrl) return null;
-  
+
   try {
     await ensureCacheDir();
     const cachePath = getArtworkCachePath(spotifyId, imageUrl);
-    
+
     // Check if already cached
     try {
       await stat(cachePath);
@@ -184,16 +184,16 @@ async function cacheArtwork(spotifyId: string, imageUrl: string): Promise<string
     } catch {
       // File doesn't exist, fetch and cache it
     }
-    
+
     const response = await fetch(imageUrl);
     if (!response.ok) {
       return null;
     }
-    
+
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     await writeFile(cachePath, buffer);
-    
+
     return `/cache/${cachePath.split('/').pop()}`;
   } catch (error) {
     console.error(`Failed to cache artwork for ${spotifyId}:`, error);
@@ -204,7 +204,7 @@ async function cacheArtwork(spotifyId: string, imageUrl: string): Promise<string
 // Get cached artwork or return original URL
 async function getCachedArtworkUrl(spotifyId: string, imageUrl: string): Promise<string> {
   if (!imageUrl) return '';
-  
+
   const cached = await cacheArtwork(spotifyId, imageUrl);
   return cached || imageUrl;
 }
@@ -215,16 +215,16 @@ async function cleanupExpiredCache(): Promise<void> {
     await ensureCacheDir();
     const files = await readdir(CACHE_DIR);
     const now = Date.now();
-    
+
     for (const file of files) {
       // Only process JSON cache files (metadata), not artwork files
       if (!file.endsWith('.json')) continue;
-      
+
       try {
         const filePath = join(CACHE_DIR, file);
         const stats = await stat(filePath);
         const age = now - stats.mtimeMs;
-        
+
         if (age > CACHE_DURATION) {
           await unlink(filePath);
           console.log(`Cleaned up expired cache file: ${file}`);
@@ -255,10 +255,10 @@ async function fetchWithRetry(
   initialDelay: number = 1000
 ): Promise<Response> {
   let delay = initialDelay;
-  
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const response = await fetch(url, { headers });
-    
+
     if (response.status === 429) {
       // Rate limited - check for Retry-After header
       const retryAfter = response.headers.get('Retry-After');
@@ -277,7 +277,7 @@ async function fetchWithRetry(
         delay = initialDelay * Math.pow(2, attempt);
         console.warn(`Spotify API rate limited. Retrying after ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
       }
-      
+
       if (attempt < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
@@ -286,11 +286,11 @@ async function fetchWithRetry(
         throw new Error(`Rate limit exceeded after ${maxRetries + 1} attempts`);
       }
     }
-    
+
     // Not a rate limit error, return the response
     return response;
   }
-  
+
   // Should never reach here, but TypeScript needs it
   throw new Error('Unexpected error in fetchWithRetry');
 }
@@ -328,7 +328,7 @@ export async function getSpotifyToken(): Promise<string | null> {
     const data = await response.json();
     const token = data.access_token;
     const expiresIn = data.expires_in || 3600;
-    
+
     // Cache token (expire 1 minute before actual expiry)
     spotifyTokenCache = {
       token,
@@ -405,14 +405,14 @@ async function fetchSpotifyMetadata(id: string, token: string | null): Promise<{
     }
 
     const result = { id, name: displayName, type, imageUrl };
-    
+
     // Cache the metadata to disk
     await writeToCache(id, result);
-    
+
     return result;
   } catch (error) {
     console.error(`Error fetching metadata for ${id}:`, error);
-    
+
     // If it's a rate limit error, try to return cached data even if expired
     if (error instanceof Error && error.message.includes('Rate limit')) {
       const cached = await readFromCache<{ id: string; name: string; type: string; imageUrl: string }>(id);
@@ -421,7 +421,7 @@ async function fetchSpotifyMetadata(id: string, token: string | null): Promise<{
         return cached;
       }
     }
-    
+
     const parts = id.split(':');
     return { id, name: 'Unknown', type: parts[1] || 'unknown', imageUrl: '' };
   }
@@ -433,12 +433,12 @@ export async function handleTrackRequest(req: Request): Promise<Response | null>
   if (!url.pathname.startsWith('/api/spotify/tracks/')) {
     return null;
   }
-  
+
   const trackId = decodeURIComponent(url.pathname.replace('/api/spotify/tracks/', ''));
   if (!trackId) {
     return Response.json({ error: "Missing track ID" }, { status: 400 });
   }
-  
+
   const traceContext = traceApiStart('GET', `/api/spotify/tracks/${trackId}`, 'inbound', { trackId });
   try {
     const token = await getSpotifyToken();
@@ -476,7 +476,7 @@ export async function handleAlbumTracksRequest(req: Request): Promise<Response |
   if (!match) {
     return null;
   }
-  
+
   const albumId = decodeURIComponent(match[1]);
   const limit = parseInt(url.searchParams.get('limit') || '50', 10);
   const offset = parseInt(url.searchParams.get('offset') || '0', 10);
@@ -517,7 +517,7 @@ export async function handlePlaylistTracksRequest(req: Request): Promise<Respons
   if (!match) {
     return null;
   }
-  
+
   const playlistId = decodeURIComponent(match[1]);
   const limit = parseInt(url.searchParams.get('limit') || '50', 10);
   const offset = parseInt(url.searchParams.get('offset') || '0', 10);
@@ -558,7 +558,7 @@ export async function handleArtistTopTracksRequest(req: Request): Promise<Respon
   if (!match) {
     return null;
   }
-  
+
   const artistId = decodeURIComponent(match[1]);
   const market = url.searchParams.get('market') || 'US';
   const traceContext = traceApiStart('GET', `/api/spotify/artists/${artistId}/top-tracks`, 'inbound', { artistId, market });
@@ -600,13 +600,13 @@ export async function handleMetadataRequest(req: Request): Promise<Response> {
     console.error('[handleMetadataRequest] Called with invalid path:', url.pathname);
     return Response.json({ error: "Invalid metadata request path" }, { status: 400 });
   }
-  
+
   const id = decodeURIComponent(url.pathname.replace('/api/spotify/metadata/', ''));
   if (!id) {
     console.error('[handleMetadataRequest] No ID found in path:', url.pathname);
     return Response.json({ error: "Missing metadata ID" }, { status: 400 });
   }
-  
+
   const traceContext = traceApiStart('GET', `/api/spotify/metadata/${id}`, 'inbound', { id });
   try {
     const token = await getSpotifyToken();
@@ -614,7 +614,7 @@ export async function handleMetadataRequest(req: Request): Promise<Response> {
       traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
       return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
     }
-    
+
     // This is where fetchSpotifyMetadata should be called
     console.log('[handleMetadataRequest] Calling fetchSpotifyMetadata for id:', id);
     const metadata = await fetchSpotifyMetadata(id, token);
@@ -696,14 +696,14 @@ export function createSpotifyRoutes() {
         const traceContext = traceApiStart('POST', '/api/spotify/ids', 'inbound', { idsCount: body.ids?.length || 0 });
         try {
           const ids = body.ids || [];
-          
+
           const config = await getConfig();
           if (!config.spotify) {
             config.spotify = {};
           }
           config.spotify.configuredSpotifyIds = ids;
           await setConfig(config);
-          
+
           traceApiEnd(traceContext, 200, { success: true });
           return Response.json({ success: true });
         } catch (error) {
@@ -734,7 +734,7 @@ export function createSpotifyRoutes() {
             traceApiEnd(traceContext, 400, { error: "Artist ID is required" });
             return Response.json({ error: "Artist ID is required" }, { status: 400 });
           }
-          
+
           const config = await getConfig();
           if (!config.spotify) {
             config.spotify = {};
@@ -742,7 +742,7 @@ export function createSpotifyRoutes() {
           if (!config.spotify.recentlyPlayedArtists) {
             config.spotify.recentlyPlayedArtists = [];
           }
-          
+
           // Add to beginning if not already present
           const artistIds = config.spotify.recentlyPlayedArtists;
           if (!artistIds.includes(body.artistId)) {
@@ -755,7 +755,7 @@ export function createSpotifyRoutes() {
             config.spotify.recentlyPlayedArtists = artistIds;
             await setConfig(config);
           }
-          
+
           traceApiEnd(traceContext, 200, { success: true });
           return Response.json({ success: true });
         } catch (error) {
@@ -828,27 +828,27 @@ export function createSpotifyRoutes() {
     "/api/spotify/config": {
       POST: async (req: Request) => {
         const body = await req.json() as { clientId?: string; clientSecret?: string };
-        const traceContext = traceApiStart('POST', '/api/spotify/config', 'inbound', { 
-          hasClientId: !!body.clientId, 
-          hasClientSecret: !!body.clientSecret 
+        const traceContext = traceApiStart('POST', '/api/spotify/config', 'inbound', {
+          hasClientId: !!body.clientId,
+          hasClientSecret: !!body.clientSecret
         });
         try {
           const config = await getConfig();
-          
+
           if (!config.spotify) {
             config.spotify = {};
           }
-          
+
           if (body.clientId !== undefined) {
             config.spotify.clientId = body.clientId;
           }
           if (body.clientSecret !== undefined) {
             config.spotify.clientSecret = body.clientSecret;
           }
-          
+
           // Clear token cache when credentials change
           clearSpotifyTokenCache();
-          
+
           await setConfig(config);
           traceApiEnd(traceContext, 200, { success: true });
           return Response.json({ success: true });
@@ -877,19 +877,19 @@ export function createSpotifyRoutes() {
         const traceContext = traceApiStart('POST', '/api/spotify/recent-artists-limit', 'inbound', { limit: body.limit });
         try {
           const limit = body.limit;
-          
+
           if (limit === undefined || limit < 1) {
             traceApiEnd(traceContext, 400, { error: "Limit must be a positive number" });
             return Response.json({ error: "Limit must be a positive number" }, { status: 400 });
           }
-          
+
           const config = await getConfig();
           if (!config.spotify) {
             config.spotify = {};
           }
           config.spotify.recentArtistsLimit = limit;
           await setConfig(config);
-          
+
           traceApiEnd(traceContext, 200, { success: true, limit });
           return Response.json({ success: true, limit });
         } catch (error) {
@@ -898,7 +898,7 @@ export function createSpotifyRoutes() {
         }
       },
     },
-    // Image to base64 API - fetches image and returns as base64 data URI
+    // Image API - fetches image and returns binary data
     // Route parameter is base64-encoded image URL
     "/api/image/:base64EncodedImageUrl": {
       GET: async (req: Request) => {
@@ -917,18 +917,36 @@ export function createSpotifyRoutes() {
           traceApiEnd(traceContext, 400, { error: "Missing base64EncodedImageUrl parameter" });
           return Response.json({ error: "Missing base64EncodedImageUrl parameter" }, { status: 400 });
         }
-        
+
         const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { hasUrl: !!imageUrl });
-        
+
         try {
-          const base64 = await fetchImageAsBase64(imageUrl);
-          if (!base64) {
-            traceApiEnd(traceContext, 404, { error: "Failed to fetch image" });
-            return Response.json({ error: "Failed to fetch image" }, { status: 404 });
+          // Fetch image directly
+          const response = await fetch(imageUrl);
+          if (!response.ok) {
+            traceApiEnd(traceContext, response.status, { error: "Failed to fetch image" });
+            return Response.json({ error: "Failed to fetch image" }, { status: response.status });
           }
-          
-          traceApiEnd(traceContext, 200, { success: true });
-          return Response.json({ base64 });
+
+          // Get the image data as array buffer
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+
+          // Determine content type from response or URL
+          const contentType = response.headers.get('content-type') ||
+            (imageUrl.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' :
+              imageUrl.match(/\.png$/i) ? 'image/png' :
+                imageUrl.match(/\.gif$/i) ? 'image/gif' :
+                  imageUrl.match(/\.webp$/i) ? 'image/webp' :
+                    'image/jpeg');
+
+          traceApiEnd(traceContext, 200, { contentType, size: buffer.length });
+          return new Response(buffer, {
+            headers: {
+              'Content-Type': contentType,
+              'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
+            },
+          });
         } catch (error) {
           traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to process image" }, { status: 500 });
