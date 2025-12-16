@@ -28,7 +28,7 @@ function getCacheFilePath(spotifyId: string, suffix: string = 'json'): string {
 // Get image cache file path
 function getImageCachePath(imageUrl: string): string {
   const urlHash = createHash('md5').update(imageUrl).digest('hex');
-  
+
   // Extract file extension from URL
   const urlWithoutQuery = imageUrl.split('?')[0];
   let ext = 'jpg'; // Default to jpg
@@ -887,19 +887,19 @@ export function createSpotifyRoutes() {
           try {
             const stats = await stat(cachePath);
             const age = Date.now() - stats.mtimeMs;
-            
+
             if (age < CACHE_DURATION) {
               // Cache is valid, read from cache
               buffer = await readFile(cachePath);
               fromCache = true;
-              
+
               // Determine content type from file extension
               const ext = cachePath.split('.').pop()?.toLowerCase();
-              contentType = 
+              contentType =
                 ext === 'png' ? 'image/png' :
-                ext === 'gif' ? 'image/gif' :
-                ext === 'webp' ? 'image/webp' :
-                'image/jpeg';
+                  ext === 'gif' ? 'image/gif' :
+                    ext === 'webp' ? 'image/webp' :
+                      'image/jpeg';
             } else {
               // Cache expired, delete it
               await unlink(cachePath);
@@ -934,10 +934,10 @@ export function createSpotifyRoutes() {
             }
           }
 
-          traceApiEnd(traceContext, 200, { 
-            contentType, 
+          traceApiEnd(traceContext, 200, {
+            contentType,
             size: buffer.length,
-            fromCache 
+            fromCache
           });
           return new Response(new Uint8Array(buffer), {
             headers: {

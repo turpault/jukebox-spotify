@@ -33,6 +33,17 @@ interface SpotifyIdWithArtwork {
 
 // All API calls are proxied through the server (local API)
 
+// Helper function to convert image URL to cached endpoint
+function getCachedImageUrl(imageUrl: string): string {
+  if (!imageUrl) return '';
+  // If already using the cached endpoint, return as-is
+  if (imageUrl.startsWith('/api/image/')) return imageUrl;
+  // Base64 encode the URL and use the cached endpoint
+  // Use btoa for browser compatibility
+  const base64Url = btoa(unescape(encodeURIComponent(imageUrl)));
+  return `/api/image/${base64Url}`;
+}
+
 // Theme system
 interface Theme {
   name: string;
@@ -1140,7 +1151,7 @@ export default function App() {
             <div style={styles.player}>
               {playerState.currentTrack.album_cover_url && (
                 <img
-                  src={playerState.currentTrack.album_cover_url}
+                  src={getCachedImageUrl(playerState.currentTrack.album_cover_url)}
                   alt={playerState.currentTrack.name || 'Album cover'}
                   style={styles.albumArt}
                 />
@@ -1362,7 +1373,7 @@ export default function App() {
                     >
                       {item.imageUrl ? (
                         <img
-                          src={item.imageUrl}
+                          src={getCachedImageUrl(item.imageUrl)}
                           alt={item.name}
                           style={{
                             ...styles.spotifyIdImage,
@@ -1436,7 +1447,7 @@ export default function App() {
                     >
                       {item.imageUrl ? (
                         <img
-                          src={item.imageUrl}
+                          src={getCachedImageUrl(item.imageUrl)}
                           alt={item.name}
                           style={{
                             ...styles.spotifyIdImage,
