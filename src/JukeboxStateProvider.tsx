@@ -431,13 +431,13 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
         // Only mark as disconnected for actual connection failures, not timeouts
         // Timeouts are normal in long polling and don't indicate disconnection
         const errorMessage = error instanceof Error ? error.message : String(error);
-        
+
         // Check if this is a real connection error (not a timeout)
-        const isConnectionError = errorMessage.includes('Failed to fetch') || 
-                                  errorMessage.includes('NetworkError') ||
-                                  errorMessage.includes('404') ||
-                                  (error instanceof TypeError && errorMessage.includes('fetch'));
-        
+        const isConnectionError = errorMessage.includes('Failed to fetch') ||
+          errorMessage.includes('NetworkError') ||
+          errorMessage.includes('404') ||
+          (error instanceof TypeError && errorMessage.includes('fetch'));
+
         if (isConnectionError) {
           // Only set disconnected for actual connection failures
           setIsConnected(false);

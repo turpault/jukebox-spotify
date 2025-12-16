@@ -24,6 +24,7 @@ if (isKioskMode) {
 
 serve({
   port: 3000,
+  idleTimeout: 40, // Allow long polling requests (30s timeout) with buffer
   fetch: async (req: Request, server) => {
     // All requests are handled by routes
     return new Response(null, { status: 404 });
