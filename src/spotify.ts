@@ -7,6 +7,8 @@ import { traceApiStart, traceApiEnd } from "./tracing";
 const CACHE_DIR = "cache";
 const BASE64_CACHE_DIR = join(process.cwd(), "cache", "base64");
 const CACHE_DURATION = 60 * 60 * 1000 * 24 * 30; // 30 days in milliseconds
+const MIN_CACHE_SIZE = 10000; // Keep at least 10000 image files in cache
+const CACHE_CLEANUP_INTERVAL = 60 * 60 * 1000; // Run cleanup every hour
 
 let spotifyTokenCache: { token: string; expiresAt: number } | null = null;
 
@@ -16,6 +18,75 @@ async function ensureCacheDir() {
     await mkdir(CACHE_DIR, { recursive: true });
   } catch (error) {
     // Directory might already exist, ignore error
+  }
+}
+
+// Periodic cache cleanup: keep at least MIN_CACHE_SIZE files, remove oldest ones first
+async function cleanupImageCache() {
+  try {
+    await ensureCacheDir();
+    const files = await readdir(CACHE_DIR);
+    
+    // Filter for image cache files (files starting with "image_")
+    const imageFiles = files.filter(f => f.startsWith('image_'));
+    
+    if (imageFiles.length <= MIN_CACHE_SIZE) {
+      return; // No cleanup needed
+    }
+    
+    // Get stats for all image files and sort by modification time (oldest first)
+    const fileStats = await Promise.all(
+      imageFiles.map(async (filename) => {
+        const filePath = join(CACHE_DIR, filename);
+        try {
+          const stats = await stat(filePath);
+          return { filename, filePath, mtimeMs: stats.mtimeMs };
+        } catch {
+          return null;
+        }
+      })
+    );
+    
+    // Filter out nulls and sort by modification time (oldest first)
+    const validFiles = fileStats.filter(f => f !== null) as Array<{ filename: string; filePath: string; mtimeMs: number }>;
+    validFiles.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    
+    // Remove oldest files beyond MIN_CACHE_SIZE
+    const filesToRemove = validFiles.slice(0, validFiles.length - MIN_CACHE_SIZE);
+    let removedCount = 0;
+    
+    for (const file of filesToRemove) {
+      try {
+        await unlink(file.filePath);
+        removedCount++;
+      } catch (error) {
+        console.error(`Failed to remove cache file ${file.filename}:`, error);
+      }
+    }
+    
+    if (removedCount > 0) {
+      console.log(`[Cache Cleanup] Removed ${removedCount} old image cache files, kept ${validFiles.length - removedCount} files`);
+    }
+  } catch (error) {
+    console.error('[Cache Cleanup] Error during cleanup:', error);
+  }
+}
+
+// Start periodic cache cleanup
+let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+export function startImageCacheCleanup() {
+  // Run cleanup immediately on start
+  cleanupImageCache();
+  
+  // Then run cleanup periodically
+  cleanupInterval = setInterval(cleanupImageCache, CACHE_CLEANUP_INTERVAL);
+}
+
+export function stopImageCacheCleanup() {
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
   }
 }
 
@@ -879,36 +950,28 @@ export function createSpotifyRoutes() {
           await ensureCacheDir();
           const cachePath = getImageCachePath(imageUrl);
 
-          // Check if image is already cached and not expired
+          // Check if image is already cached (no expiration check)
           let fromCache = false;
 
           try {
             const stats = await stat(cachePath);
-            const age = Date.now() - stats.mtimeMs;
+            // Cache exists, serve from cache using Bun.file()
+            fromCache = true;
+            const file = Bun.file(cachePath);
 
-            if (age < CACHE_DURATION) {
-              // Cache is valid, serve from cache using Bun.file()
-              fromCache = true;
-              const file = Bun.file(cachePath);
-              
-              traceApiEnd(traceContext, 200, {
-                contentType: file.type || 'image/jpeg',
-                size: stats.size,
-                fromCache
-              });
-              
-              return new Response(file, {
-                headers: {
-                  'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
-                },
-              });
-            } else {
-              // Cache expired, delete it
-              await unlink(cachePath);
-              throw new Error('Cache expired');
-            }
+            traceApiEnd(traceContext, 200, {
+              contentType: file.type || 'image/jpeg',
+              size: stats.size,
+              fromCache
+            });
+
+            return new Response(file, {
+              headers: {
+                'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
+              },
+            });
           } catch {
-            // Cache doesn't exist or expired, fetch and cache
+            // Cache doesn't exist, fetch and cache
             const response = await fetch(imageUrl);
             if (!response.ok) {
               traceApiEnd(traceContext, response.status, { error: "Failed to fetch image" });
@@ -930,13 +993,13 @@ export function createSpotifyRoutes() {
             // Serve the file using Bun.file() (Bun automatically sets MIME type from extension)
             const file = Bun.file(cachePath);
             const fileSize = buffer.length;
-            
+
             traceApiEnd(traceContext, 200, {
               contentType: file.type || response.headers.get('content-type') || 'image/jpeg',
               size: fileSize,
               fromCache: false
             });
-            
+
             return new Response(file, {
               headers: {
                 'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
