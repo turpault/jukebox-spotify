@@ -30,6 +30,7 @@ interface PlayerState {
 class LibrespotStateService {
   private librespotWs: WebSocket | null = null;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
   private reconnectAttempts: number = 0;
   private currentState: PlayerState = {};
   private stateVersion: number = 0; // Increment on each state change
@@ -39,9 +40,11 @@ class LibrespotStateService {
   }> = new Set();
   private maxReconnectDelay: number = 30000; // 30 seconds max delay
   private initialReconnectDelay: number = 1000; // Start with 1 second
+  private keepaliveIntervalMs: number = 30000; // Check connection every 30 seconds
 
   constructor() {
     this.connect();
+    this.startKeepalive();
   }
 
   private connect() {
@@ -82,7 +85,9 @@ class LibrespotStateService {
         traceWebSocketConnection("open", "outbound", {
           librespotConnected: true,
         });
+        console.log("Connected to go-librespot WebSocket");
         this.reconnectAttempts = 0; // Reset on successful connection
+        this.startKeepalive(); // Ensure keepalive is running
       };
 
       // Handle messages from go-librespot
@@ -114,6 +119,8 @@ class LibrespotStateService {
           reason: event.reason,
           wasClean: event.wasClean,
         });
+        console.log("Disconnected from go-librespot WebSocket, will reconnect...");
+        this.stopKeepalive();
 
         // Try to reconnect
         const delay = Math.min(
@@ -292,6 +299,34 @@ class LibrespotStateService {
       this.librespotWs !== null &&
       this.librespotWs.readyState === WebSocket.OPEN
     );
+  }
+
+  // Ensure connection is established (reconnect if not connected)
+  ensureConnected(): void {
+    if (!this.isConnected()) {
+      console.log("Connection to go-librespot lost, reconnecting...");
+      this.connect();
+    }
+  }
+
+  // Start keepalive mechanism to ensure connection stays alive
+  private startKeepalive(): void {
+    this.stopKeepalive(); // Clear any existing interval
+    
+    this.keepaliveInterval = setInterval(() => {
+      if (!this.isConnected()) {
+        console.log("Keepalive check: Connection lost, reconnecting...");
+        this.connect();
+      }
+    }, this.keepaliveIntervalMs);
+  }
+
+  // Stop keepalive mechanism
+  private stopKeepalive(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = null;
+    }
   }
 }
 

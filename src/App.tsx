@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useJukeboxState } from './JukeboxStateProvider';
 
 interface TrackMetadata {
   context_uri?: string;
@@ -242,6 +243,29 @@ interface HotkeyConfig {
 }
 
 export default function App() {
+  // Get state from provider
+  const {
+    playerState,
+    statusMessage,
+    isConnected,
+    themeName,
+    viewName,
+    isKioskMode,
+    hotkeys,
+    configuredSpotifyIds,
+    recentArtists,
+    loadingSpotifyId,
+    togglePlay,
+    nextTrack,
+    previousTrack,
+    setVolume,
+    seek,
+    toggleRepeat,
+    toggleShuffle,
+    setLoadingSpotifyId,
+  } = useJukeboxState();
+
+  // Local UI state
   const [theme, setTheme] = useState<Theme>(steampunkTheme);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -255,35 +279,8 @@ export default function App() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-  const [themeName, setThemeName] = useState<string>('steampunk');
-  const [viewName, setViewName] = useState<string>('default');
-  const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
-  const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
-  const [configuredSpotifyIds, setConfiguredSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
-  const [recentArtists, setRecentArtists] = useState<SpotifyIdWithArtwork[]>([]);
-  const [loadingSpotifyId, setLoadingSpotifyId] = useState<string | null>(null);
 
-  const [playerState, setPlayerState] = useState<PlayerState>({
-    isPaused: true,
-    isActive: false,
-    currentTrack: null,
-    position: 0,
-    duration: 0,
-    volume: 50,
-    volumeMax: 100,
-    repeatContext: false,
-    repeatTrack: false,
-    shuffleContext: false,
-  });
-  const [statusMessage, setStatusMessage] = useState("Connecting to go-librespot...");
-  const [isConnected, setIsConnected] = useState(false);
-  const pollAbortControllerRef = useRef<AbortController | null>(null);
-  const stateVersionRef = useRef<number>(0);
-  const gamepadPollIntervalRef = useRef<number | null>(null);
-  const lastGamepadStateRef = useRef<boolean[]>([]);
-  const configVersionRef = useRef<string | null>(null);
-  const configPollIntervalRef = useRef<number | null>(null);
-
+  // UI-specific API call helper (for functions that need to update statusMessage)
   const apiCall = useCallback(async (endpoint: string, method: string = 'GET', body?: any) => {
     const url = endpoint;
     logREST(method, endpoint, body);
@@ -312,304 +309,9 @@ export default function App() {
       return responseData;
     } catch (error) {
       logREST(method, endpoint, body, null, error);
-      setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return null;
     }
-  }, [setStatusMessage]);
-
-  const fetchPlaybackStatus = useCallback(async () => {
-    logWebSocket('Fetching playback status');
-    try {
-      // Use /status endpoint as per API spec
-      const status = await apiCall('/status');
-
-      if (status) {
-        logWebSocket('Playback status received', status);
-        // Update player state with current status according to API spec
-        // Status response: paused, stopped, buffering, volume, volume_steps, track
-        setPlayerState(prev => ({
-          ...prev,
-          currentTrack: status.track ? {
-            uri: status.track.uri,
-            name: status.track.name,
-            artist_names: status.track.artist_names || [],
-            album_name: status.track.album_name,
-            album_cover_url: status.track.album_cover_url,
-            duration: status.track.duration,
-          } : null,
-          isPaused: status.paused === true,
-          isActive: !status.stopped && status.track !== null && status.track !== undefined,
-          volume: status.volume !== undefined ? status.volume : prev.volume,
-          volumeMax: status.volume_steps !== undefined ? status.volume_steps : prev.volumeMax,
-          repeatContext: status.repeat_context === true,
-          repeatTrack: status.repeat_track === true,
-          shuffleContext: status.shuffle_context === true,
-          // Note: position is not in status response, it comes from WebSocket events
-        }));
-      } else {
-        logWebSocket('No playback status available');
-      }
-    } catch (error) {
-      logWebSocket('Error fetching playback status', null, error);
-    }
-  }, [apiCall]);
-
-  const fetchRecentArtists = useCallback(async () => {
-    try {
-      // First get the list of IDs
-      const idsResponse = await apiCall('/api/spotify/recent-artists', 'GET', undefined);
-      if (idsResponse && idsResponse.ids) {
-        const ids: string[] = idsResponse.ids;
-
-        // Then fetch metadata for each ID
-        const metadataPromises = ids.map(async (id: string) => {
-          try {
-            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined);
-            if (metadataResponse) {
-              return {
-                id: metadataResponse.id || id,
-                name: metadataResponse.name || 'Unknown',
-                type: metadataResponse.type || 'unknown',
-                imageUrl: metadataResponse.imageUrl || '',
-              };
-            }
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          } catch (error) {
-            console.error(`Failed to fetch metadata for ${id}:`, error);
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          }
-        });
-
-        const metadata = await Promise.all(metadataPromises);
-        setRecentArtists(metadata);
-      }
-    } catch (error) {
-      console.error('Failed to fetch recent artists:', error);
-    }
-  }, [apiCall]);
-
-  const fetchTrackArtistUri = useCallback(async (trackUri: string) => {
-    try {
-      // Parse track URI
-      const parts = trackUri.split(':');
-      if (parts.length < 3 || parts[0] !== 'spotify' || parts[1] !== 'track') {
-        return;
-      }
-      const trackId = parts[2];
-
-      // Fetch track details through server
-      const trackData = await apiCall(`/api/spotify/tracks/${encodeURIComponent(trackId)}`, 'GET', undefined);
-      if (!trackData) {
-        return;
-      }
-
-      if (trackData.artists && trackData.artists.length > 0) {
-        const artist = trackData.artists[0];
-        const artistUri = artist.uri;
-
-        // Add to recent artists via API (which will handle deduplication and persistence)
-        await apiCall('/api/spotify/recent-artists', 'POST', { artistId: artistUri });
-
-        // Refresh the recent artists list
-        await fetchRecentArtists();
-      }
-    } catch (error) {
-      console.error('Error fetching track artist URI:', error);
-    }
-  }, [apiCall, fetchRecentArtists]);
-
-  const pollEvents = useCallback(async () => {
-    while (true) {
-      // Cancel any existing poll
-      if (pollAbortControllerRef.current) {
-        pollAbortControllerRef.current.abort();
-      }
-
-      const abortController = new AbortController();
-      pollAbortControllerRef.current = abortController;
-
-      try {
-        const url = `/api/events?version=${stateVersionRef.current}&timeout=30000`;
-        logWebSocket('Polling for events', { version: stateVersionRef.current });
-
-        const response = await fetch(url, {
-          signal: abortController.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Poll failed: ${response.status} ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        logWebSocket('Events received', result);
-
-        // Update connection status
-        setIsConnected(result.connected || false);
-        if (result.connected) {
-          setStatusMessage("Connected to go-librespot");
-        } else {
-          setStatusMessage("Reconnecting...");
-        }
-
-        // Update state version
-        if (result.version !== undefined) {
-          stateVersionRef.current = result.version;
-        }
-
-        // Update player state from result
-        if (result.state) {
-          const state = result.state;
-          setPlayerState(prev => {
-            const newState = { ...prev };
-
-            if (state.isActive !== undefined) newState.isActive = state.isActive;
-            if (state.isPaused !== undefined) newState.isPaused = state.isPaused;
-            if (state.currentTrack !== undefined) {
-              newState.currentTrack = state.currentTrack;
-            }
-            if (state.position !== undefined) newState.position = state.position;
-            if (state.duration !== undefined) newState.duration = state.duration;
-            if (state.volume !== undefined) newState.volume = state.volume;
-            if (state.volumeMax !== undefined) newState.volumeMax = state.volumeMax;
-            if (state.repeatContext !== undefined) newState.repeatContext = state.repeatContext;
-            if (state.repeatTrack !== undefined) newState.repeatTrack = state.repeatTrack;
-            if (state.shuffleContext !== undefined) newState.shuffleContext = state.shuffleContext;
-
-            return newState;
-          });
-        }
-
-        // Continue polling (loop will continue)
-      } catch (error: any) {
-        if (abortController.signal.aborted) {
-          // Poll was cancelled, exit loop
-          return;
-        }
-
-        logWebSocket('Poll error', null, error);
-        setIsConnected(false);
-        setStatusMessage("Reconnecting...");
-
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    }
-  }, [fetchTrackArtistUri]);
-
-  const fetchKioskMode = useCallback(async () => {
-    try {
-      const response = await apiCall('/api/kiosk', 'GET', undefined);
-      if (response && typeof response.kiosk === 'boolean') {
-        setIsKioskMode(response.kiosk);
-        if (response.kiosk) {
-          // Enter fullscreen if supported
-          if (document.documentElement.requestFullscreen) {
-            document.documentElement.requestFullscreen().catch(() => {
-              // Ignore fullscreen errors (user may have denied permission)
-            });
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch kiosk mode:', error);
-    }
-  }, [apiCall]);
-
-  const fetchTheme = useCallback(async () => {
-    try {
-      const response = await apiCall('/api/theme', 'GET', undefined);
-      if (response && response.theme) {
-        const themeKey = response.theme;
-        if (themes[themeKey]) {
-          setTheme(themes[themeKey]);
-          setThemeName(themeKey);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch theme:', error);
-    }
-  }, [apiCall]);
-
-  const fetchView = useCallback(async () => {
-    try {
-      const response = await apiCall('/api/view', 'GET', undefined);
-      if (response && response.view) {
-        setViewName(response.view);
-      }
-    } catch (error) {
-      console.error('Failed to fetch view:', error);
-    }
-  }, [apiCall]);
-
-  const fetchHotkeys = useCallback(async () => {
-    try {
-      const response = await apiCall('/api/hotkeys', 'GET', undefined);
-      if (response) {
-        setHotkeys(response);
-      }
-    } catch (error) {
-      console.error('Failed to fetch hotkeys:', error);
-    }
-  }, [apiCall]);
-
-  const fetchSpotifyIds = useCallback(async () => {
-    try {
-      // First get the list of IDs
-      const idsResponse = await apiCall('/api/spotify/ids', 'GET', undefined);
-      if (idsResponse && idsResponse.ids) {
-        const ids: string[] = idsResponse.ids;
-
-        // Then fetch metadata for each ID
-        const metadataPromises = ids.map(async (id: string) => {
-          try {
-            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined);
-            if (metadataResponse) {
-              return {
-                id: metadataResponse.id || id,
-                name: metadataResponse.name || 'Unknown',
-                type: metadataResponse.type || 'unknown',
-                imageUrl: metadataResponse.imageUrl || '',
-              };
-            }
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          } catch (error) {
-            console.error(`Failed to fetch metadata for ${id}:`, error);
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          }
-        });
-
-        const metadata = await Promise.all(metadataPromises);
-        setConfiguredSpotifyIds(metadata);
-      }
-    } catch (error) {
-      console.error('Failed to fetch Spotify IDs:', error);
-    }
-  }, [apiCall]);
-
-  const checkConfigVersion = useCallback(async () => {
-    try {
-      const response = await apiCall('/api/config/version', 'GET', undefined);
-      if (response && response.version) {
-        const currentVersion = response.version;
-
-        // If we have a previous version and it changed, reload config
-        if (configVersionRef.current !== null && configVersionRef.current !== currentVersion) {
-          console.log('Configuration changed, reloading...');
-          // Reload all configuration
-          await fetchTheme();
-          await fetchView();
-          await fetchHotkeys();
-          await fetchSpotifyIds();
-          await fetchRecentArtists();
-        }
-
-        // Update version reference (do this after reload to avoid triggering again)
-        configVersionRef.current = currentVersion;
-      }
-    } catch (error) {
-      console.error('Failed to check config version:', error);
-    }
-  }, [apiCall, fetchTheme, fetchView, fetchHotkeys, fetchSpotifyIds, fetchRecentArtists]);
+  }, []);
 
   const fetchTracksFromSpotifyId = useCallback(async (spotifyId: string): Promise<string[]> => {
     try {
@@ -746,78 +448,23 @@ export default function App() {
     }
   }, []);
 
+  // Update theme when themeName changes
   useEffect(() => {
-    // Fetch kiosk mode on page load
-    fetchKioskMode();
-    // Fetch theme on page load
-    fetchTheme();
-    // Fetch view on page load
-    fetchView();
-    // Fetch hotkeys on page load
-    fetchHotkeys();
-    // Fetch Spotify IDs on page load
-    fetchSpotifyIds();
-    // Fetch recent artists on page load
-    fetchRecentArtists();
-    // Fetch initial playback status on page load
-    fetchPlaybackStatus();
-    // Start long polling for real-time updates
-    pollEvents();
+    if (themes[themeName]) {
+      setTheme(themes[themeName]);
+    }
+  }, [themeName]);
 
-    // Set up config version polling (check every 2 seconds)
-    configPollIntervalRef.current = window.setInterval(() => {
-      checkConfigVersion();
-    }, 2000);
-
-    // Initial config version check
-    checkConfigVersion().then(() => {
-      // Store initial version after first check
-    });
-
-    return () => {
-      if (pollAbortControllerRef.current) {
-        pollAbortControllerRef.current.abort();
-        pollAbortControllerRef.current = null;
-      }
-      if (gamepadPollIntervalRef.current) {
-        clearInterval(gamepadPollIntervalRef.current);
-      }
-      if (configPollIntervalRef.current) {
-        clearInterval(configPollIntervalRef.current);
-      }
-    };
-  }, [fetchPlaybackStatus, fetchTheme, fetchView, fetchKioskMode, fetchHotkeys, fetchSpotifyIds, fetchRecentArtists, checkConfigVersion, pollEvents]);
-
-  // Update position during playback
+  // Handle kiosk mode fullscreen
   useEffect(() => {
-    if (!playerState.isPaused && playerState.isActive && playerState.duration > 0) {
-      const interval = setInterval(() => {
-        setPlayerState(prev => {
-          const newPosition = prev.position + 1000; // Increment by 1 second (1000ms)
-          // Stop at duration
-          if (newPosition >= prev.duration) {
-            return { ...prev, position: prev.duration };
-          }
-          return { ...prev, position: newPosition };
+    if (isKioskMode) {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {
+          // Ignore fullscreen errors (user may have denied permission)
         });
-      }, 1000); // Update every second
-
-      return () => clearInterval(interval);
-    }
-  }, [playerState.isPaused, playerState.isActive, playerState.duration]);
-
-  // Fetch artist URI when track changes (side effect moved out of state updater)
-  useEffect(() => {
-    const currentTrack = playerState.currentTrack;
-    if (currentTrack?.uri && currentTrack?.artist_names && currentTrack.artist_names.length > 0) {
-      // Parse track URI to get artist ID
-      const trackUriParts = currentTrack.uri.split(':');
-      if (trackUriParts.length >= 3 && trackUriParts[0] === 'spotify' && trackUriParts[1] === 'track') {
-        // Fetch track details to get artist URI
-        fetchTrackArtistUri(currentTrack.uri);
       }
     }
-  }, [playerState.currentTrack?.uri, fetchTrackArtistUri]);
+  }, [isKioskMode]);
 
   // Update document body background when theme changes
   useEffect(() => {
@@ -874,56 +521,6 @@ export default function App() {
     }
   }, [isKioskMode]);
 
-  const togglePlay = async () => {
-    // Use /player/playpause endpoint as per API spec
-    logWebSocket('User action: Toggle play/pause');
-    await apiCall('/player/playpause', 'POST');
-  };
-
-  const nextTrack = async () => {
-    logWebSocket('User action: Next track');
-    await apiCall('/player/next', 'POST');
-  };
-
-  const previousTrack = async () => {
-    // Use /player/prev endpoint as per API spec (not /player/previous)
-    logWebSocket('User action: Previous track');
-    await apiCall('/player/prev', 'POST');
-  };
-
-  const setVolume = async (volume: number) => {
-    logWebSocket('User action: Set volume', { volume });
-    await apiCall('/player/volume', 'POST', { volume });
-  };
-
-  const seek = async (position: number) => {
-    logWebSocket('User action: Seek', { position });
-    await apiCall('/player/seek', 'POST', { position });
-  };
-
-  const toggleRepeat = async () => {
-    // Cycle through: off -> context -> track -> off
-    if (!playerState.repeatContext && !playerState.repeatTrack) {
-      // Off -> Context
-      logWebSocket('User action: Enable repeat context');
-      await apiCall('/player/repeat_context', 'POST', { repeat_context: true });
-    } else if (playerState.repeatContext && !playerState.repeatTrack) {
-      // Context -> Track
-      logWebSocket('User action: Switch to repeat track');
-      await apiCall('/player/repeat_context', 'POST', { repeat_context: false });
-      await apiCall('/player/repeat_track', 'POST', { repeat_track: true });
-    } else {
-      // Track -> Off
-      logWebSocket('User action: Disable repeat');
-      await apiCall('/player/repeat_track', 'POST', { repeat_track: false });
-    }
-  };
-
-  const toggleShuffle = async () => {
-    const newValue = !playerState.shuffleContext;
-    logWebSocket('User action: Toggle shuffle', { shuffle_context: newValue });
-    await apiCall('/player/shuffle_context', 'POST', { shuffle_context: newValue });
-  };
 
   const adjustVolume = async (delta: number) => {
     const newVolume = Math.max(0, Math.min(playerState.volumeMax, playerState.volume + delta));

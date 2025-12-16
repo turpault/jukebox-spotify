@@ -5,7 +5,11 @@ import { isKioskMode, launchChromeKiosk } from "./src/kiosk";
 import { createManagementRoutes } from "./src/management";
 import { createSpotifyRoutes, startImageCacheCleanup } from "./src/spotify";
 import { createLibrespotRoutes } from "./src/librespot";
-import "./src/librespot-state"; // Initialize state service
+import { librespotStateService } from "./src/librespot-state"; // Initialize state service
+
+// Ensure go-librespot connection is established on server startup
+console.log("Initializing go-librespot connection...");
+librespotStateService.ensureConnected();
 
 // Start periodic image cache cleanup
 startImageCacheCleanup();
