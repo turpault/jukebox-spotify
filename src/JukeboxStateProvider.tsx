@@ -175,7 +175,7 @@ export interface JukeboxStateContextValue {
   toggleRepeat: () => Promise<void>;
   toggleShuffle: () => Promise<void>;
   setLoadingSpotifyId: (id: string | null) => void;
-  setStatusMessage: (message: string) => void;
+  setStatusMessage: (message: string | ((prev: string) => string)) => void;
   setThemeName: (name: string) => void;
 }
 

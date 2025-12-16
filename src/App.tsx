@@ -419,10 +419,8 @@ export default function App() {
       const successMessage = `Added ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue: ${itemName}`;
       setStatusMessage(successMessage);
       setTimeout(() => {
-        // Clear the message if it's still the success message
-        if (statusMessage === successMessage) {
-          setStatusMessage('');
-        }
+        // Clear the success message after 3 seconds
+        setStatusMessage(prev => prev === successMessage ? '' : prev);
       }, 3000);
     } catch (error) {
       console.error('Failed to add to queue:', error);
