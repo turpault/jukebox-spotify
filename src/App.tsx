@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useJukeboxState } from './JukeboxStateProvider';
-import { ConfiguredSpotifyIds } from './ConfiguredSpotifyIds';
-import { RecentArtists } from './RecentArtists';
+import { useConfigState } from './ConfigStateProvider';
+import { SpotifyIdsList } from './SpotifyIdsList';
 
 interface TrackMetadata {
   context_uri?: string;
@@ -241,6 +241,9 @@ export default function App() {
     setStatusMessage,
     setThemeName,
   } = useJukeboxState();
+
+  // Get config state
+  const { configuredSpotifyIds, recentArtists } = useConfigState();
 
   // Local UI state
   const [theme, setTheme] = useState<Theme>(steampunkTheme);
@@ -882,10 +885,26 @@ export default function App() {
             marginTop: isMobile ? '20px' : '0',
           }}>
             {/* Configured IDs - Left Side */}
-            <ConfiguredSpotifyIds theme={theme} styles={styles} isMobile={isMobile} />
+            <SpotifyIdsList
+              items={configuredSpotifyIds}
+              title="Configured"
+              sidebarStyle="left"
+              theme={theme}
+              styles={styles}
+              isMobile={isMobile}
+            />
 
             {/* Recent Artists - Right Side */}
-            <RecentArtists theme={theme} styles={styles} isMobile={isMobile} viewName={viewName} />
+            {viewName !== 'dash' && (
+              <SpotifyIdsList
+                items={recentArtists}
+                title="Recent Artists"
+                sidebarStyle="right"
+                theme={theme}
+                styles={styles}
+                isMobile={isMobile}
+              />
+            )}
           </div>
         )}
       </div>

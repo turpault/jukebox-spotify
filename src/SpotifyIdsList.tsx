@@ -1,6 +1,6 @@
 import React from 'react';
-import { useConfigState } from './ConfigStateProvider';
 import { useJukeboxState } from './JukeboxStateProvider';
+import { SpotifyIdWithArtwork } from './ConfigStateProvider';
 
 // Helper function to convert image URL to cached endpoint
 function getCachedImageUrl(imageUrl: string): string {
@@ -10,26 +10,29 @@ function getCachedImageUrl(imageUrl: string): string {
   return `/api/image/${base64Url}`;
 }
 
-interface RecentArtistsProps {
+interface SpotifyIdsListProps {
+  items: SpotifyIdWithArtwork[];
+  title: string;
+  sidebarStyle: 'left' | 'right';
   theme: any;
   styles: any;
   isMobile: boolean;
-  viewName: string;
 }
 
-export function RecentArtists({ theme, styles, isMobile, viewName }: RecentArtistsProps) {
-  const { recentArtists } = useConfigState();
+export function SpotifyIdsList({ items, title, sidebarStyle, theme, styles, isMobile }: SpotifyIdsListProps) {
   const { addToQueue, loadingSpotifyId } = useJukeboxState();
 
-  if (viewName === 'dash' || recentArtists.length === 0) {
+  if (items.length === 0) {
     return null;
   }
 
+  const sidebarStyleObj = sidebarStyle === 'left' ? styles.spotifyIdsSidebarLeft : styles.spotifyIdsSidebarRight;
+
   return (
-    <div style={styles.spotifyIdsSidebarRight}>
-      <div style={styles.spotifyIdsSidebarTitle}>Recent Artists</div>
+    <div style={sidebarStyleObj}>
+      <div style={styles.spotifyIdsSidebarTitle}>{title}</div>
       <div style={styles.spotifyIdsSidebarScroll}>
-        {recentArtists.map((item) => (
+        {items.map((item) => (
           <button
             key={item.id}
             onClick={() => addToQueue(item.id)}
