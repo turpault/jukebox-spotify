@@ -26,14 +26,14 @@ async function cleanupImageCache() {
   try {
     await ensureCacheDir();
     const files = await readdir(CACHE_DIR);
-    
+
     // Filter for image cache files (files starting with "image_")
     const imageFiles = files.filter(f => f.startsWith('image_'));
-    
+
     if (imageFiles.length <= MIN_CACHE_SIZE) {
       return; // No cleanup needed
     }
-    
+
     // Get stats for all image files and sort by modification time (oldest first)
     const fileStats = await Promise.all(
       imageFiles.map(async (filename) => {
@@ -46,15 +46,15 @@ async function cleanupImageCache() {
         }
       })
     );
-    
+
     // Filter out nulls and sort by modification time (oldest first)
     const validFiles = fileStats.filter(f => f !== null) as Array<{ filename: string; filePath: string; mtimeMs: number }>;
     validFiles.sort((a, b) => a.mtimeMs - b.mtimeMs);
-    
+
     // Remove oldest files beyond MIN_CACHE_SIZE
     const filesToRemove = validFiles.slice(0, validFiles.length - MIN_CACHE_SIZE);
     let removedCount = 0;
-    
+
     for (const file of filesToRemove) {
       try {
         await unlink(file.filePath);
@@ -63,7 +63,7 @@ async function cleanupImageCache() {
         console.error(`Failed to remove cache file ${file.filename}:`, error);
       }
     }
-    
+
     if (removedCount > 0) {
       console.log(`[Cache Cleanup] Removed ${removedCount} old image cache files, kept ${validFiles.length - removedCount} files`);
     }
@@ -78,7 +78,7 @@ let cleanupInterval: ReturnType<typeof setInterval> | null = null;
 export function startImageCacheCleanup() {
   // Run cleanup immediately on start
   cleanupImageCache();
-  
+
   // Then run cleanup periodically
   cleanupInterval = setInterval(cleanupImageCache, CACHE_CLEANUP_INTERVAL);
 }

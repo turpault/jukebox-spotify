@@ -284,7 +284,7 @@ export default function App() {
   const configVersionRef = useRef<string | null>(null);
   const configPollIntervalRef = useRef<number | null>(null);
 
-  const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
+  const apiCall = useCallback(async (endpoint: string, method: string = 'GET', body?: any) => {
     const url = endpoint;
     logREST(method, endpoint, body);
 
@@ -315,7 +315,7 @@ export default function App() {
       setStatusMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return null;
     }
-  };
+  }, [setStatusMessage]);
 
   const fetchPlaybackStatus = useCallback(async () => {
     logWebSocket('Fetching playback status');
@@ -352,7 +352,7 @@ export default function App() {
     } catch (error) {
       logWebSocket('Error fetching playback status', null, error);
     }
-  }, []);
+  }, [apiCall]);
 
   const fetchRecentArtists = useCallback(async () => {
     try {
@@ -386,7 +386,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to fetch recent artists:', error);
     }
-  }, []);
+  }, [apiCall]);
 
   const fetchTrackArtistUri = useCallback(async (trackUri: string) => {
     try {
@@ -522,7 +522,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to fetch kiosk mode:', error);
     }
-  }, []);
+  }, [apiCall]);
 
   const fetchTheme = useCallback(async () => {
     try {
@@ -537,7 +537,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to fetch theme:', error);
     }
-  }, []);
+  }, [apiCall]);
 
   const fetchView = useCallback(async () => {
     try {
@@ -548,7 +548,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to fetch view:', error);
     }
-  }, []);
+  }, [apiCall]);
 
   const fetchHotkeys = useCallback(async () => {
     try {
@@ -559,7 +559,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to fetch hotkeys:', error);
     }
-  }, []);
+  }, [apiCall]);
 
   const fetchSpotifyIds = useCallback(async () => {
     try {
@@ -593,7 +593,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to fetch Spotify IDs:', error);
     }
-  }, []);
+  }, [apiCall]);
 
   const checkConfigVersion = useCallback(async () => {
     try {
