@@ -126,7 +126,7 @@ const traceContexts = new Map<string, { startTime: number; method: string; endpo
 const logREST = (method: string, endpoint: string, data?: any, response?: any, error?: any) => {
   const timestamp = new Date().toISOString();
   const traceId = generateTraceId();
-  
+
   if (error) {
     const duration = traceContexts.get(traceId) ? Date.now() - traceContexts.get(traceId)!.startTime : undefined;
     console.error(`[TRACE] [${timestamp}] [${traceId}] ERROR: API request failed`, {
@@ -145,7 +145,7 @@ const logREST = (method: string, endpoint: string, data?: any, response?: any, e
   } else {
     const startTime = Date.now();
     traceContexts.set(traceId, { startTime, method, endpoint });
-    
+
     if (response !== undefined) {
       const duration = Date.now() - startTime;
       traceContexts.delete(traceId);
@@ -181,7 +181,7 @@ const logREST = (method: string, endpoint: string, data?: any, response?: any, e
 const logWebSocket = (event: string, data?: any, error?: any) => {
   const timestamp = new Date().toISOString();
   const traceId = generateTraceId();
-  
+
   if (error) {
     console.error(`[TRACE] [${timestamp}] [${traceId}] ERROR: WebSocket ${event}`, {
       timestamp,
@@ -239,7 +239,7 @@ export default function App() {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
@@ -251,7 +251,7 @@ export default function App() {
   const [configuredSpotifyIds, setConfiguredSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
   const [recentArtists, setRecentArtists] = useState<SpotifyIdWithArtwork[]>([]);
   const [loadingSpotifyId, setLoadingSpotifyId] = useState<string | null>(null);
-  
+
   const [playerState, setPlayerState] = useState<PlayerState>({
     isPaused: true,
     isActive: false,
@@ -276,7 +276,7 @@ export default function App() {
   const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
     const url = endpoint;
     logREST(method, endpoint, body);
-    
+
     try {
       const startTime = Date.now();
       const response = await fetch(url, {
@@ -286,16 +286,16 @@ export default function App() {
         },
         body: body ? JSON.stringify(body) : undefined,
       });
-      
+
       const duration = Date.now() - startTime;
       const responseData = await response.json().catch(() => null);
-      
+
       if (!response.ok) {
         const error = new Error(`API call failed: ${response.status} ${response.statusText}`);
         logREST(method, endpoint, body, null, { status: response.status, statusText: response.statusText, duration: `${duration}ms` });
         throw error;
       }
-      
+
       logREST(method, endpoint, body, responseData, null);
       console.log(`[REST API] Response time: ${duration}ms`);
       return responseData;
@@ -311,7 +311,7 @@ export default function App() {
     try {
       // Use /status endpoint as per API spec
       const status = await apiCall('/status');
-      
+
       if (status) {
         logWebSocket('Playback status received', status);
         // Update player state with current status according to API spec
@@ -349,7 +349,7 @@ export default function App() {
       const idsResponse = await apiCall('/api/spotify/recent-artists', 'GET', undefined);
       if (idsResponse && idsResponse.ids) {
         const ids: string[] = idsResponse.ids;
-        
+
         // Then fetch metadata for each ID
         const metadataPromises = ids.map(async (id: string) => {
           try {
@@ -368,7 +368,7 @@ export default function App() {
             return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
           }
         });
-        
+
         const metadata = await Promise.all(metadataPromises);
         setRecentArtists(metadata);
       }
@@ -398,7 +398,7 @@ export default function App() {
 
         // Add to recent artists via API (which will handle deduplication and persistence)
         await apiCall('/api/spotify/recent-artists', 'POST', { artistId: artistUri });
-        
+
         // Refresh the recent artists list
         await fetchRecentArtists();
       }
@@ -420,7 +420,7 @@ export default function App() {
       try {
         const url = `/api/events?version=${stateVersionRef.current}&timeout=30000`;
         logWebSocket('Polling for events', { version: stateVersionRef.current });
-        
+
         const response = await fetch(url, {
           signal: abortController.signal,
         });
@@ -450,7 +450,7 @@ export default function App() {
           const state = result.state;
           setPlayerState(prev => {
             const newState = { ...prev };
-            
+
             if (state.isActive !== undefined) newState.isActive = state.isActive;
             if (state.isPaused !== undefined) newState.isPaused = state.isPaused;
             if (state.currentTrack !== undefined) {
@@ -472,7 +472,7 @@ export default function App() {
             if (state.repeatContext !== undefined) newState.repeatContext = state.repeatContext;
             if (state.repeatTrack !== undefined) newState.repeatTrack = state.repeatTrack;
             if (state.shuffleContext !== undefined) newState.shuffleContext = state.shuffleContext;
-            
+
             return newState;
           });
         }
@@ -483,11 +483,11 @@ export default function App() {
           // Poll was cancelled, exit loop
           return;
         }
-        
+
         logWebSocket('Poll error', null, error);
         setIsConnected(false);
         setStatusMessage("Reconnecting...");
-        
+
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
@@ -556,7 +556,7 @@ export default function App() {
       const idsResponse = await apiCall('/api/spotify/ids', 'GET', undefined);
       if (idsResponse && idsResponse.ids) {
         const ids: string[] = idsResponse.ids;
-        
+
         // Then fetch metadata for each ID
         const metadataPromises = ids.map(async (id: string) => {
           try {
@@ -575,7 +575,7 @@ export default function App() {
             return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
           }
         });
-        
+
         const metadata = await Promise.all(metadataPromises);
         setConfiguredSpotifyIds(metadata);
       }
@@ -589,7 +589,7 @@ export default function App() {
       const response = await apiCall('/api/config/version', 'GET', undefined);
       if (response && response.version) {
         const currentVersion = response.version;
-        
+
         // If we have a previous version and it changed, reload config
         if (configVersionRef.current !== null && configVersionRef.current !== currentVersion) {
           console.log('Configuration changed, reloading...');
@@ -600,7 +600,7 @@ export default function App() {
           await fetchSpotifyIds();
           await fetchRecentArtists();
         }
-        
+
         // Update version reference (do this after reload to avoid triggering again)
         configVersionRef.current = currentVersion;
       }
@@ -626,7 +626,7 @@ export default function App() {
       }
 
       let tracks: string[] = [];
-      
+
       if (type === 'album') {
         // Fetch album tracks through server
         let offset = 0;
@@ -636,9 +636,9 @@ export default function App() {
           if (!data || !data.items) {
             throw new Error('Failed to fetch album tracks');
           }
-          
+
           tracks.push(...data.items.map((item: any) => item.uri));
-          
+
           if (!data.next) {
             break;
           }
@@ -653,11 +653,11 @@ export default function App() {
           if (!data || !data.items) {
             throw new Error('Failed to fetch playlist tracks');
           }
-          
+
           tracks.push(...data.items
             .filter((item: any) => item.track && item.track.uri)
             .map((item: any) => item.track.uri));
-          
+
           if (!data.next) {
             break;
           }
@@ -669,7 +669,7 @@ export default function App() {
         if (!data || !data.tracks) {
           throw new Error('Failed to fetch artist top tracks');
         }
-        
+
         tracks = data.tracks.map((track: any) => track.uri);
       } else {
         throw new Error(`Unsupported type: ${type}`);
@@ -687,10 +687,10 @@ export default function App() {
     try {
       const item = [...configuredSpotifyIds, ...recentArtists].find((s: SpotifyIdWithArtwork) => s.id === spotifyId);
       const itemName = item?.name || spotifyId;
-      
+
       // Fetch all tracks (handles single tracks, albums, playlists, artists)
       const tracks = await fetchTracksFromSpotifyId(spotifyId);
-      
+
       if (tracks.length === 0) {
         setStatusMessage(`No tracks found for ${itemName}`);
         setLoadingSpotifyId(null);
@@ -699,7 +699,7 @@ export default function App() {
 
       // Enqueue tracks sequentially
       setStatusMessage(`Adding ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue...`);
-      
+
       for (let i = 0; i < tracks.length; i++) {
         await apiCall('/player/add_to_queue', 'POST', { uri: tracks[i] });
         // Small delay between requests to avoid overwhelming the API
@@ -707,7 +707,7 @@ export default function App() {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
-      
+
       setStatusMessage(`Added ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue: ${itemName}`);
       setTimeout(() => {
         setStatusMessage((prev) => {
@@ -731,7 +731,7 @@ export default function App() {
       setTheme(themes[newThemeName]);
       setThemeName(newThemeName);
     }
-    
+
     // Persist to server in the background
     try {
       const response = await apiCall('/api/theme', 'POST', { theme: newThemeName });
@@ -761,17 +761,17 @@ export default function App() {
     fetchPlaybackStatus();
     // Start long polling for real-time updates
     pollEvents();
-    
+
     // Set up config version polling (check every 2 seconds)
     configPollIntervalRef.current = window.setInterval(() => {
       checkConfigVersion();
     }, 2000);
-    
+
     // Initial config version check
     checkConfigVersion().then(() => {
       // Store initial version after first check
     });
-    
+
     return () => {
       if (pollAbortControllerRef.current) {
         pollAbortControllerRef.current.abort();
@@ -807,13 +807,13 @@ export default function App() {
   // Update document body background when theme changes
   useEffect(() => {
     // Extract solid color from theme background (handle gradients)
-    const bgColor = theme.colors.background.includes('gradient') 
+    const bgColor = theme.colors.background.includes('gradient')
       ? '#000000' // Default to black for gradients
       : theme.colors.background;
-    
+
     document.body.style.background = bgColor;
     document.body.style.color = theme.colors.text;
-    
+
     return () => {
       // Reset on unmount
       document.body.style.background = '';
@@ -829,13 +829,13 @@ export default function App() {
       document.body.style.webkitUserSelect = 'none';
       (document.body.style as any).mozUserSelect = 'none';
       (document.body.style as any).msUserSelect = 'none';
-      
+
       // Disable right-click context menu
       const handleContextMenu = (e: MouseEvent) => {
         e.preventDefault();
         return false;
       };
-      
+
       // Disable common keyboard shortcuts that could exit kiosk mode
       const handleKeyDown = (e: KeyboardEvent) => {
         // Allow F11 for fullscreen toggle, but block F12 (dev tools) and Ctrl+Shift+I
@@ -844,10 +844,10 @@ export default function App() {
           return false;
         }
       };
-      
+
       document.addEventListener('contextmenu', handleContextMenu);
       document.addEventListener('keydown', handleKeyDown);
-      
+
       return () => {
         document.body.style.userSelect = '';
         document.body.style.webkitUserSelect = '';
@@ -993,7 +993,7 @@ export default function App() {
         if (buttonIndex !== undefined && buttonIndex < buttons.length) {
           const pressed = buttons[buttonIndex].pressed;
           const wasPressed = lastGamepadStateRef.current[buttonIndex];
-          
+
           if (pressed && !wasPressed) {
             action();
           }
@@ -1034,7 +1034,7 @@ export default function App() {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
@@ -1130,195 +1130,195 @@ export default function App() {
       <div style={styles.content}>
         {!isConnected && (
           <>
-            <h1 style={{...styles.title, fontSize: '3rem', marginBottom: '10px'}}>Jukebox</h1>
-        <p style={styles.status}>{statusMessage}</p>
+            <h1 style={{ ...styles.title, fontSize: '3rem', marginBottom: '10px' }}>Jukebox</h1>
+            <p style={styles.status}>{statusMessage}</p>
           </>
         )}
 
         {playerState.isActive && playerState.currentTrack ? (
           <>
             <div style={styles.player}>
-            {playerState.currentTrack.album_cover_url && (
-              <img
-                src={playerState.currentTrack.album_cover_url}
-                alt={playerState.currentTrack.name || 'Album cover'}
-                style={styles.albumArt}
-              />
-            )}
-            <div style={styles.trackInfo}>
-              <h2 style={{ 
-                color: theme.colors.text, 
-                fontFamily: theme.fonts.title,
-                margin: '10px 0',
-                fontSize: '1.8rem',
-                textShadow: theme.name === 'Matrix' 
-                  ? `0 0 10px ${theme.colors.primary}, 0 0 20px ${theme.colors.primary}`
-                  : `0 2px 10px rgba(212, 175, 55, 0.3)`
-              }}>{playerState.currentTrack.name || 'Unknown Track'}</h2>
-              <h3 style={{ 
-                color: theme.colors.textSecondary, 
-                fontFamily: theme.fonts.primary,
-                margin: '5px 0',
-                fontSize: '1.2rem',
-                fontWeight: 'normal'
-              }}>{playerState.currentTrack.artist_names?.join(', ') || 'Unknown Artist'}</h3>
-              {playerState.currentTrack.album_name && (
-                <p style={{ 
-                  fontSize: '0.9em', 
+              {playerState.currentTrack.album_cover_url && (
+                <img
+                  src={playerState.currentTrack.album_cover_url}
+                  alt={playerState.currentTrack.name || 'Album cover'}
+                  style={styles.albumArt}
+                />
+              )}
+              <div style={styles.trackInfo}>
+                <h2 style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.fonts.title,
+                  margin: '10px 0',
+                  fontSize: '1.8rem',
+                  textShadow: theme.name === 'Matrix'
+                    ? `0 0 10px ${theme.colors.primary}, 0 0 20px ${theme.colors.primary}`
+                    : `0 2px 10px rgba(212, 175, 55, 0.3)`
+                }}>{playerState.currentTrack.name || 'Unknown Track'}</h2>
+                <h3 style={{
                   color: theme.colors.textSecondary,
-                  opacity: 0.8,
                   fontFamily: theme.fonts.primary,
-                  margin: '5px 0'
-                }}>{playerState.currentTrack.album_name}</p>
+                  margin: '5px 0',
+                  fontSize: '1.2rem',
+                  fontWeight: 'normal'
+                }}>{playerState.currentTrack.artist_names?.join(', ') || 'Unknown Artist'}</h3>
+                {playerState.currentTrack.album_name && (
+                  <p style={{
+                    fontSize: '0.9em',
+                    color: theme.colors.textSecondary,
+                    opacity: 0.8,
+                    fontFamily: theme.fonts.primary,
+                    margin: '5px 0'
+                  }}>{playerState.currentTrack.album_name}</p>
+                )}
+              </div>
+              {/* Progress bar / Seek control */}
+              <div style={styles.progressContainer}>
+                <span style={styles.timeLabel}>{formatTime(playerState.position)}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={playerState.duration || 0}
+                  value={playerState.position}
+                  onChange={(e) => {
+                    const newPosition = parseInt(e.target.value);
+                    setPlayerState(prev => ({ ...prev, position: newPosition }));
+                  }}
+                  onMouseUp={(e) => {
+                    const target = e.target as HTMLInputElement;
+                    seek(parseInt(target.value));
+                  }}
+                  onTouchEnd={(e) => {
+                    const target = e.target as HTMLInputElement;
+                    seek(parseInt(target.value));
+                  }}
+                  style={styles.progressBar}
+                />
+                <span style={styles.timeLabel}>{formatTime(playerState.duration)}</span>
+              </div>
+
+              {/* Main playback controls - hidden in dash view */}
+              {viewName !== 'dash' && (
+                <div style={styles.controls}>
+                  <button
+                    style={{ ...styles.button, ...(playerState.shuffleContext ? styles.buttonActive : {}) }}
+                    onClick={toggleShuffle}
+                    title="Shuffle"
+                    onMouseEnter={(e) => {
+                      if (!playerState.shuffleContext) {
+                        Object.assign(e.currentTarget.style, styles.buttonHover);
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!playerState.shuffleContext) {
+                        Object.assign(e.currentTarget.style, styles.button);
+                      }
+                    }}
+                  >
+                    <div style={styles.iconShuffle}>
+                      <div style={styles.iconShuffleArrow1}></div>
+                      <div style={styles.iconShuffleLine}></div>
+                      <div style={styles.iconShuffleArrow2}></div>
+                    </div>
+                  </button>
+                  <button
+                    style={styles.button}
+                    onClick={previousTrack}
+                    title="Previous"
+                    onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.buttonHover)}
+                    onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.button)}
+                  >
+                    <div style={styles.iconPrevious}>
+                      <div style={styles.iconPreviousTriangle}></div>
+                      <div style={styles.iconPreviousTriangle}></div>
+                    </div>
+                  </button>
+                  <button
+                    style={styles.button}
+                    onClick={togglePlay}
+                    title={playerState.isPaused ? "Play" : "Pause"}
+                    onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.buttonHover)}
+                    onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.button)}
+                  >
+                    {playerState.isPaused ? (
+                      <div style={styles.iconPlay}></div>
+                    ) : (
+                      <div style={styles.iconPause}>
+                        <div style={styles.iconPauseBar}></div>
+                        <div style={styles.iconPauseBar}></div>
+                      </div>
+                    )}
+                  </button>
+                  <button
+                    style={styles.button}
+                    onClick={nextTrack}
+                    title="Next"
+                    onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.buttonHover)}
+                    onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.button)}
+                  >
+                    <div style={styles.iconNext}>
+                      <div style={styles.iconNextTriangle}></div>
+                      <div style={styles.iconNextTriangle}></div>
+                    </div>
+                  </button>
+                  <button
+                    style={{ ...styles.button, ...(playerState.repeatTrack || playerState.repeatContext ? styles.buttonActive : {}) }}
+                    onClick={toggleRepeat}
+                    title={playerState.repeatTrack ? "Repeat Track" : playerState.repeatContext ? "Repeat Context" : "Repeat Off"}
+                    onMouseEnter={(e) => {
+                      if (!playerState.repeatTrack && !playerState.repeatContext) {
+                        Object.assign(e.currentTarget.style, styles.buttonHover);
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!playerState.repeatTrack && !playerState.repeatContext) {
+                        Object.assign(e.currentTarget.style, styles.button);
+                      }
+                    }}
+                  >
+                    {playerState.repeatTrack ? (
+                      <div style={styles.iconRepeatOne}>
+                        <div style={styles.iconRepeatOneText}>1</div>
+                      </div>
+                    ) : (
+                      <div style={styles.iconRepeat}>
+                        <div style={styles.iconRepeatArrow}></div>
+                      </div>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Volume control - hidden in dash view */}
+              {viewName !== 'dash' && (
+                <div style={styles.volumeContainer}>
+                  <div style={styles.iconVolume}>
+                    <div style={styles.iconVolumeBody}></div>
+                    <div style={styles.iconVolumeWaves}></div>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={playerState.volumeMax || 100}
+                    value={playerState.volume}
+                    onChange={(e) => {
+                      const newVolume = parseInt(e.target.value);
+                      setPlayerState(prev => ({ ...prev, volume: newVolume }));
+                    }}
+                    onMouseUp={(e) => {
+                      const target = e.target as HTMLInputElement;
+                      setVolume(parseInt(target.value));
+                    }}
+                    onTouchEnd={(e) => {
+                      const target = e.target as HTMLInputElement;
+                      setVolume(parseInt(target.value));
+                    }}
+                    style={styles.volumeSlider}
+                  />
+                  <span style={styles.volumeLabel}>{Math.round((playerState.volume / (playerState.volumeMax || 100)) * 100)}%</span>
+                </div>
               )}
             </div>
-            {/* Progress bar / Seek control */}
-            <div style={styles.progressContainer}>
-              <span style={styles.timeLabel}>{formatTime(playerState.position)}</span>
-              <input
-                type="range"
-                min={0}
-                max={playerState.duration || 0}
-                value={playerState.position}
-                onChange={(e) => {
-                  const newPosition = parseInt(e.target.value);
-                  setPlayerState(prev => ({ ...prev, position: newPosition }));
-                }}
-                onMouseUp={(e) => {
-                  const target = e.target as HTMLInputElement;
-                  seek(parseInt(target.value));
-                }}
-                onTouchEnd={(e) => {
-                  const target = e.target as HTMLInputElement;
-                  seek(parseInt(target.value));
-                }}
-                style={styles.progressBar}
-              />
-              <span style={styles.timeLabel}>{formatTime(playerState.duration)}</span>
-            </div>
-
-            {/* Main playback controls - hidden in dash view */}
-            {viewName !== 'dash' && (
-            <div style={styles.controls}>
-              <button 
-                style={{...styles.button, ...(playerState.shuffleContext ? styles.buttonActive : {})}}
-                onClick={toggleShuffle}
-                title="Shuffle"
-                onMouseEnter={(e) => {
-                  if (!playerState.shuffleContext) {
-                    Object.assign(e.currentTarget.style, styles.buttonHover);
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!playerState.shuffleContext) {
-                    Object.assign(e.currentTarget.style, styles.button);
-                  }
-                }}
-              >
-                <div style={styles.iconShuffle}>
-                  <div style={styles.iconShuffleArrow1}></div>
-                  <div style={styles.iconShuffleLine}></div>
-                  <div style={styles.iconShuffleArrow2}></div>
-                </div>
-              </button>
-              <button 
-                style={styles.button} 
-                onClick={previousTrack} 
-                title="Previous"
-                onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.buttonHover)}
-                onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.button)}
-              >
-                <div style={styles.iconPrevious}>
-                  <div style={styles.iconPreviousTriangle}></div>
-                  <div style={styles.iconPreviousTriangle}></div>
-            </div>
-              </button>
-              <button 
-                style={styles.button} 
-                onClick={togglePlay} 
-                title={playerState.isPaused ? "Play" : "Pause"}
-                onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.buttonHover)}
-                onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.button)}
-              >
-                {playerState.isPaused ? (
-                  <div style={styles.iconPlay}></div>
-                ) : (
-                  <div style={styles.iconPause}>
-                    <div style={styles.iconPauseBar}></div>
-                    <div style={styles.iconPauseBar}></div>
-                  </div>
-                )}
-              </button>
-              <button 
-                style={styles.button} 
-                onClick={nextTrack} 
-                title="Next"
-                onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.buttonHover)}
-                onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.button)}
-              >
-                <div style={styles.iconNext}>
-                  <div style={styles.iconNextTriangle}></div>
-                  <div style={styles.iconNextTriangle}></div>
-                </div>
-              </button>
-              <button 
-                style={{...styles.button, ...(playerState.repeatTrack || playerState.repeatContext ? styles.buttonActive : {})}}
-                onClick={toggleRepeat}
-                title={playerState.repeatTrack ? "Repeat Track" : playerState.repeatContext ? "Repeat Context" : "Repeat Off"}
-                onMouseEnter={(e) => {
-                  if (!playerState.repeatTrack && !playerState.repeatContext) {
-                    Object.assign(e.currentTarget.style, styles.buttonHover);
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!playerState.repeatTrack && !playerState.repeatContext) {
-                    Object.assign(e.currentTarget.style, styles.button);
-                  }
-                }}
-              >
-                {playerState.repeatTrack ? (
-                  <div style={styles.iconRepeatOne}>
-                    <div style={styles.iconRepeatOneText}>1</div>
-          </div>
-                ) : (
-                  <div style={styles.iconRepeat}>
-                    <div style={styles.iconRepeatArrow}></div>
-                  </div>
-                )}
-              </button>
-            </div>
-            )}
-
-            {/* Volume control - hidden in dash view */}
-            {viewName !== 'dash' && (
-            <div style={styles.volumeContainer}>
-              <div style={styles.iconVolume}>
-                <div style={styles.iconVolumeBody}></div>
-                <div style={styles.iconVolumeWaves}></div>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={playerState.volumeMax || 100}
-                value={playerState.volume}
-                onChange={(e) => {
-                  const newVolume = parseInt(e.target.value);
-                  setPlayerState(prev => ({ ...prev, volume: newVolume }));
-                }}
-                onMouseUp={(e) => {
-                  const target = e.target as HTMLInputElement;
-                  setVolume(parseInt(target.value));
-                }}
-                onTouchEnd={(e) => {
-                  const target = e.target as HTMLInputElement;
-                  setVolume(parseInt(target.value));
-                }}
-                style={styles.volumeSlider}
-              />
-              <span style={styles.volumeLabel}>{Math.round((playerState.volume / (playerState.volumeMax || 100)) * 100)}%</span>
-            </div>
-            )}
-          </div>
           </>
         ) : (
           <div style={styles.placeholder}>
@@ -1528,7 +1528,7 @@ const createStyles = (theme: Theme, isMobile: boolean): Record<string, React.CSS
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
     backgroundClip: 'text',
-    textShadow: theme.name === 'Matrix' 
+    textShadow: theme.name === 'Matrix'
       ? `0 0 20px ${theme.colors.primary}, 0 0 40px ${theme.colors.primary}`
       : `0 0 30px rgba(212, 175, 55, 0.5)`,
     letterSpacing: theme.name === 'Matrix' ? '0.2em' : '0.1em',

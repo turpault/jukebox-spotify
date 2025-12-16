@@ -629,6 +629,46 @@ export async function handleMetadataRequest(req: Request): Promise<Response> {
 
 export function createSpotifyRoutes() {
   return {
+    // Spotify track API
+    "/api/spotify/tracks/:id": {
+      GET: async (req: Request) => {
+        const result = await handleTrackRequest(req);
+        if (result === null) {
+          return Response.json({ error: "Invalid track request" }, { status: 400 });
+        }
+        return result;
+      },
+    },
+    // Spotify album tracks API
+    "/api/spotify/albums/:id/tracks": {
+      GET: async (req: Request) => {
+        const result = await handleAlbumTracksRequest(req);
+        if (result === null) {
+          return Response.json({ error: "Invalid album tracks request" }, { status: 400 });
+        }
+        return result;
+      },
+    },
+    // Spotify playlist tracks API
+    "/api/spotify/playlists/:id/tracks": {
+      GET: async (req: Request) => {
+        const result = await handlePlaylistTracksRequest(req);
+        if (result === null) {
+          return Response.json({ error: "Invalid playlist tracks request" }, { status: 400 });
+        }
+        return result;
+      },
+    },
+    // Spotify artist top tracks API
+    "/api/spotify/artists/:id/top-tracks": {
+      GET: async (req: Request) => {
+        const result = await handleArtistTopTracksRequest(req);
+        if (result === null) {
+          return Response.json({ error: "Invalid artist top tracks request" }, { status: 400 });
+        }
+        return result;
+      },
+    },
     // Spotify metadata API - dynamic route with :id parameter
     "/api/spotify/metadata/:id": {
       GET: async (req: Request) => {
