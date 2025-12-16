@@ -386,7 +386,10 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
         const result = await response.json();
         logPlayerEvent('Events received', result);
 
-        setIsConnected(result.connected || false);
+        // Update connection status based on server response
+        // Long polling timeouts are normal and don't indicate disconnection
+        // The server always returns the current connection status
+        setIsConnected(result.connected === true);
         if (result.connected) {
           setStatusMessage("Connected");
         } else {
@@ -424,16 +427,31 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
         }
 
         logPlayerEvent('Poll error', null, error);
-        setIsConnected(false);
 
-        // Provide more informative error messages
+        // Only mark as disconnected for actual connection failures, not timeouts
+        // Timeouts are normal in long polling and don't indicate disconnection
         const errorMessage = error instanceof Error ? error.message : String(error);
-        if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
-          setStatusMessage("Cannot connect to server. Is the server running?");
-        } else if (errorMessage.includes('404')) {
-          setStatusMessage("Server endpoint not found. Check server configuration.");
+        
+        // Check if this is a real connection error (not a timeout)
+        const isConnectionError = errorMessage.includes('Failed to fetch') || 
+                                  errorMessage.includes('NetworkError') ||
+                                  errorMessage.includes('404') ||
+                                  (error instanceof TypeError && errorMessage.includes('fetch'));
+        
+        if (isConnectionError) {
+          // Only set disconnected for actual connection failures
+          setIsConnected(false);
+          if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+            setStatusMessage("Cannot connect to server. Is the server running?");
+          } else if (errorMessage.includes('404')) {
+            setStatusMessage("Server endpoint not found. Check server configuration.");
+          } else {
+            setStatusMessage(`Connection error: ${errorMessage}`);
+          }
         } else {
-          setStatusMessage(`Connection error: ${errorMessage}`);
+          // For other errors (like timeouts), don't change connection status
+          // Just log and continue polling
+          console.warn('Poll error (non-fatal):', errorMessage);
         }
 
         // Wait before retrying
