@@ -543,7 +543,7 @@ export default function App() {
     }
   }, []);
 
-  if (!isConnected) {
+  if (!isConnected && isConnectionStatusKnown) {
     return (
       <div style={styles.container}>
         {/* Theme selector */}
@@ -684,7 +684,7 @@ export default function App() {
         </div>
       )}
       <div style={styles.content}>
-        {!isConnected && (
+        {!isConnected && isConnectionStatusKnown && (
           <>
             <h1 style={{ ...styles.title, fontSize: '3rem', marginBottom: '10px' }}>Jukebox</h1>
             <p style={styles.status}>{statusMessage}</p>
