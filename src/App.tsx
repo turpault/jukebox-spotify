@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useJukeboxState } from './JukeboxStateProvider';
+import { ConfiguredSpotifyIds } from './ConfiguredSpotifyIds';
+import { RecentArtists } from './RecentArtists';
 
 interface TrackMetadata {
   context_uri?: string;
@@ -225,8 +227,6 @@ export default function App() {
     viewName,
     isKioskMode,
     hotkeys,
-    configuredSpotifyIds,
-    recentArtists,
     loadingSpotifyId,
     togglePlay,
     nextTrack,
@@ -366,14 +366,11 @@ export default function App() {
   const addToQueue = useCallback(async (spotifyId: string) => {
     setLoadingSpotifyId(spotifyId);
     try {
-      const item = [...configuredSpotifyIds, ...recentArtists].find((s: SpotifyIdWithArtwork) => s.id === spotifyId);
-      const itemName = item?.name || spotifyId;
-
       // Fetch all tracks (handles single tracks, albums, playlists, artists)
       const tracks = await fetchTracksFromSpotifyId(spotifyId);
 
       if (tracks.length === 0) {
-        setStatusMessage(`No tracks found for ${itemName}`);
+        setStatusMessage(`No tracks found for ${spotifyId}`);
         setLoadingSpotifyId(null);
         return;
       }
@@ -389,7 +386,7 @@ export default function App() {
         }
       }
 
-      const successMessage = `Added ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue: ${itemName}`;
+      const successMessage = `Added ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue`;
       setStatusMessage(successMessage);
       setTimeout(() => {
         // Clear the success message after 3 seconds
@@ -401,7 +398,7 @@ export default function App() {
     } finally {
       setLoadingSpotifyId(null);
     }
-  }, [configuredSpotifyIds, recentArtists, fetchTracksFromSpotifyId]);
+  }, [fetchTracksFromSpotifyId]);
 
   const updateTheme = useCallback(async (newThemeName: string) => {
     // Update theme immediately for responsive UI
@@ -992,152 +989,10 @@ export default function App() {
             marginTop: isMobile ? '20px' : '0',
           }}>
             {/* Configured IDs - Left Side */}
-            {configuredSpotifyIds.length > 0 && (
-              <div style={styles.spotifyIdsSidebarLeft}>
-                <div style={styles.spotifyIdsSidebarTitle}>Configured</div>
-                <div style={styles.spotifyIdsSidebarScroll}>
-                  {configuredSpotifyIds.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => addToQueue(item.id)}
-                      style={styles.spotifyIdButton}
-                      title={item.name}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'scale(1.05)';
-                        e.currentTarget.style.boxShadow = theme.effects.shadow;
-                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
-                        if (overlay) overlay.style.opacity = '1';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'scale(1)';
-                        e.currentTarget.style.boxShadow = 'none';
-                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
-                        if (overlay) overlay.style.opacity = '0';
-                      }}
-                    >
-                      {item.imageUrl ? (
-                        <img
-                          src={getCachedImageUrl(item.imageUrl)}
-                          alt={item.name}
-                          style={{
-                            ...styles.spotifyIdImage,
-                            opacity: loadingSpotifyId === item.id ? 0.3 : 1,
-                            filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
-                          }}
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const parent = target.parentElement;
-                            if (parent) {
-                              const fallback = document.createElement('div');
-                              fallback.style.cssText = `width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${theme.colors.surface}; color: ${theme.colors.text}; font-size: 0.8rem; text-align: center; padding: 10px; font-family: ${theme.fonts.primary};`;
-                              fallback.textContent = item.name;
-                              parent.appendChild(fallback);
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div style={{
-                          width: '100%',
-                          height: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: theme.colors.surface,
-                          color: theme.colors.text,
-                          fontSize: '0.8rem',
-                          textAlign: 'center',
-                          padding: '10px',
-                          fontFamily: theme.fonts.primary,
-                          opacity: loadingSpotifyId === item.id ? 0.3 : 1,
-                          filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
-                          transition: 'opacity 0.3s, filter 0.3s',
-                        }}>
-                          {item.name}
-                        </div>
-                      )}
-                      <div style={styles.spotifyIdOverlay} data-overlay>
-                        <div style={styles.spotifyIdName}>{item.name}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            <ConfiguredSpotifyIds theme={theme} styles={styles} isMobile={isMobile} />
 
             {/* Recent Artists - Right Side */}
-            {recentArtists.length > 0 && (
-              <div style={styles.spotifyIdsSidebarRight}>
-                <div style={styles.spotifyIdsSidebarTitle}>Recent Artists</div>
-                <div style={styles.spotifyIdsSidebarScroll}>
-                  {recentArtists.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => addToQueue(item.id)}
-                      style={styles.spotifyIdButton}
-                      title={item.name}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'scale(1.05)';
-                        e.currentTarget.style.boxShadow = theme.effects.shadow;
-                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
-                        if (overlay) overlay.style.opacity = '1';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'scale(1)';
-                        e.currentTarget.style.boxShadow = 'none';
-                        const overlay = e.currentTarget.querySelector('[data-overlay]') as HTMLElement;
-                        if (overlay) overlay.style.opacity = '0';
-                      }}
-                    >
-                      {item.imageUrl ? (
-                        <img
-                          src={getCachedImageUrl(item.imageUrl)}
-                          alt={item.name}
-                          style={{
-                            ...styles.spotifyIdImage,
-                            opacity: loadingSpotifyId === item.id ? 0.3 : 1,
-                            filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
-                          }}
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const parent = target.parentElement;
-                            if (parent) {
-                              const fallback = document.createElement('div');
-                              fallback.style.cssText = `width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${theme.colors.surface}; color: ${theme.colors.text}; font-size: 0.8rem; text-align: center; padding: 10px; font-family: ${theme.fonts.primary};`;
-                              fallback.textContent = item.name;
-                              parent.appendChild(fallback);
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div style={{
-                          width: '100%',
-                          height: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: theme.colors.surface,
-                          color: theme.colors.text,
-                          fontSize: '0.8rem',
-                          textAlign: 'center',
-                          padding: '10px',
-                          fontFamily: theme.fonts.primary,
-                          opacity: loadingSpotifyId === item.id ? 0.3 : 1,
-                          filter: loadingSpotifyId === item.id ? 'grayscale(100%)' : 'none',
-                          transition: 'opacity 0.3s, filter 0.3s',
-                        }}>
-                          {item.name}
-                        </div>
-                      )}
-                      <div style={styles.spotifyIdOverlay} data-overlay>
-                        <div style={styles.spotifyIdName}>{item.name}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            <RecentArtists theme={theme} styles={styles} isMobile={isMobile} viewName={viewName} />
           </div>
         )}
       </div>

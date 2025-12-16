@@ -163,8 +163,6 @@ export interface JukeboxStateContextValue {
   hotkeys: HotkeyConfig | null;
 
   // Spotify data
-  configuredSpotifyIds: SpotifyIdWithArtwork[];
-  recentArtists: SpotifyIdWithArtwork[];
   loadingSpotifyId: string | null;
 
   // Actions
@@ -227,8 +225,6 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
 
   // Spotify data
-  const [configuredSpotifyIds, setConfiguredSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
-  const [recentArtists, setRecentArtists] = useState<SpotifyIdWithArtwork[]>([]);
   const [loadingSpotifyId, setLoadingSpotifyId] = useState<string | null>(null);
 
   // Refs
@@ -236,8 +232,6 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
   const stateVersionRef = useRef<number>(0);
   const gamepadPollIntervalRef = useRef<number | null>(null);
   const lastGamepadStateRef = useRef<boolean[]>([]);
-  const configVersionRef = useRef<string | null>(null);
-  const configPollIntervalRef = useRef<number | null>(null);
 
   const apiCall = useCallback(async (endpoint: string, method: string = 'GET', body?: any) => {
     const url = endpoint;
@@ -305,37 +299,6 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     }
   }, [apiCall]);
 
-  const fetchRecentArtists = useCallback(async () => {
-    try {
-      const idsResponse = await apiCall('/api/spotify/recent-artists', 'GET', undefined);
-      if (idsResponse && idsResponse.ids) {
-        const ids: string[] = idsResponse.ids;
-
-        const metadataPromises = ids.map(async (id: string) => {
-          try {
-            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined);
-            if (metadataResponse) {
-              return {
-                id: metadataResponse.id || id,
-                name: metadataResponse.name || 'Unknown',
-                type: metadataResponse.type || 'unknown',
-                imageUrl: metadataResponse.imageUrl || '',
-              };
-            }
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          } catch (error) {
-            console.error(`Failed to fetch metadata for ${id}:`, error);
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          }
-        });
-
-        const metadata = await Promise.all(metadataPromises);
-        setRecentArtists(metadata);
-      }
-    } catch (error) {
-      console.error('Failed to fetch recent artists:', error);
-    }
-  }, [apiCall]);
 
   const fetchTrackArtistUri = useCallback(async (trackUri: string) => {
     try {
@@ -355,12 +318,12 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
         const artistUri = artist.uri;
 
         await apiCall('/api/spotify/recent-artists', 'POST', { artistId: artistUri });
-        await fetchRecentArtists();
+        // ConfigStateProvider will automatically refresh recent artists on next poll
       }
     } catch (error) {
       console.error('Error fetching track artist URI:', error);
     }
-  }, [apiCall, fetchRecentArtists]);
+  }, [apiCall]);
 
   const pollEvents = useCallback(async () => {
     while (true) {
@@ -504,59 +467,6 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     }
   }, [apiCall]);
 
-  const fetchSpotifyIds = useCallback(async () => {
-    try {
-      const idsResponse = await apiCall('/api/spotify/ids', 'GET', undefined);
-      if (idsResponse && idsResponse.ids) {
-        const ids: string[] = idsResponse.ids;
-
-        const metadataPromises = ids.map(async (id: string) => {
-          try {
-            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined);
-            if (metadataResponse) {
-              return {
-                id: metadataResponse.id || id,
-                name: metadataResponse.name || 'Unknown',
-                type: metadataResponse.type || 'unknown',
-                imageUrl: metadataResponse.imageUrl || '',
-              };
-            }
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          } catch (error) {
-            console.error(`Failed to fetch metadata for ${id}:`, error);
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          }
-        });
-
-        const metadata = await Promise.all(metadataPromises);
-        setConfiguredSpotifyIds(metadata);
-      }
-    } catch (error) {
-      console.error('Failed to fetch Spotify IDs:', error);
-    }
-  }, [apiCall]);
-
-  const checkConfigVersion = useCallback(async () => {
-    try {
-      const response = await apiCall('/api/config/version', 'GET', undefined);
-      if (response && response.version) {
-        const currentVersion = response.version;
-
-        if (configVersionRef.current !== null && configVersionRef.current !== currentVersion) {
-          console.log('Configuration changed, reloading...');
-          await fetchTheme();
-          await fetchView();
-          await fetchHotkeys();
-          await fetchSpotifyIds();
-          await fetchRecentArtists();
-        }
-
-        configVersionRef.current = currentVersion;
-      }
-    } catch (error) {
-      console.error('Failed to check config version:', error);
-    }
-  }, [apiCall, fetchTheme, fetchView, fetchHotkeys, fetchSpotifyIds, fetchRecentArtists]);
 
   // Player actions
   const togglePlay = useCallback(async () => {
@@ -610,8 +520,6 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     fetchTheme();
     fetchView();
     fetchHotkeys();
-    fetchSpotifyIds();
-    fetchRecentArtists();
     fetchPlaybackStatus();
 
     // Start polling - handle errors properly
@@ -631,12 +539,6 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     };
     startPolling();
 
-    configPollIntervalRef.current = window.setInterval(() => {
-      checkConfigVersion();
-    }, 2000);
-
-    checkConfigVersion().then(() => { });
-
     return () => {
       if (pollAbortControllerRef.current) {
         pollAbortControllerRef.current.abort();
@@ -645,11 +547,8 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
       if (gamepadPollIntervalRef.current) {
         clearInterval(gamepadPollIntervalRef.current);
       }
-      if (configPollIntervalRef.current) {
-        clearInterval(configPollIntervalRef.current);
-      }
     };
-  }, [fetchPlaybackStatus, fetchTheme, fetchView, fetchKioskMode, fetchHotkeys, fetchSpotifyIds, fetchRecentArtists, checkConfigVersion, pollEvents]);
+  }, [fetchPlaybackStatus, fetchTheme, fetchView, fetchKioskMode, fetchHotkeys, pollEvents]);
 
   // Update position during playback
   useEffect(() => {
@@ -687,8 +586,6 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     viewName,
     isKioskMode,
     hotkeys,
-    configuredSpotifyIds,
-    recentArtists,
     loadingSpotifyId,
     togglePlay,
     nextTrack,
