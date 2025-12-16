@@ -1,10 +1,12 @@
 import indexHtml from "./public/index.html";
 import manageHtml from "./public/manage.html";
+import appHtml from "./public/app.html";
 import { serve } from "bun";
 import { isKioskMode, launchChromeKiosk } from "./src/kiosk";
 import { createManagementRoutes } from "./src/management";
 import { createSpotifyRoutes, startImageCacheCleanup } from "./src/spotify";
 import { createLibrespotRoutes } from "./src/librespot";
+import { createErrorRoutes } from "./src/errors";
 import { librespotStateService } from "./src/librespot-state"; // Initialize state service
 
 // Ensure go-librespot connection is established on server startup
@@ -33,8 +35,10 @@ serve({
     ...createManagementRoutes(isKioskMode),
     ...createSpotifyRoutes(),
     ...createLibrespotRoutes(),
+    ...createErrorRoutes(),
     "/manage": manageHtml,
     "/": indexHtml,
+    "/app": appHtml,
   },
   development: true,
 });
