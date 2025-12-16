@@ -25,21 +25,17 @@ function getCacheFilePath(spotifyId: string, suffix: string = 'json'): string {
   return join(CACHE_DIR, `${hash}.${suffix}`);
 }
 
-// Get cache file path for artwork
-function getArtworkCachePath(spotifyId: string, imageUrl: string): string {
+// Get image cache file path
+function getImageCachePath(imageUrl: string): string {
   const urlHash = createHash('md5').update(imageUrl).digest('hex');
-  const idHash = createHash('md5').update(spotifyId).digest('hex');
-
-  // Extract file extension from URL properly
-  // Remove query parameters first
+  
+  // Extract file extension from URL
   const urlWithoutQuery = imageUrl.split('?')[0];
   let ext = 'jpg'; // Default to jpg
 
   try {
-    // Try to parse as URL to get pathname
     const urlObj = new URL(urlWithoutQuery);
     const pathname = urlObj.pathname;
-    // Extract extension from pathname (last segment after last dot)
     const pathParts = pathname.split('/');
     const filename = pathParts[pathParts.length - 1] || '';
     const extMatch = filename.match(/\.([a-zA-Z0-9]+)$/);
@@ -54,7 +50,7 @@ function getArtworkCachePath(spotifyId: string, imageUrl: string): string {
     }
   }
 
-  return join(CACHE_DIR, `artwork_${idHash}_${urlHash}.${ext}`);
+  return join(CACHE_DIR, `image_${urlHash}.${ext}`);
 }
 
 // Get base64 cache file path
@@ -166,47 +162,6 @@ async function writeToCache<T>(cacheKey: string, data: T): Promise<void> {
   } catch (error) {
     console.error(`Failed to write cache for ${cacheKey}:`, error);
   }
-}
-
-// Cache artwork image
-async function cacheArtwork(spotifyId: string, imageUrl: string): Promise<string | null> {
-  if (!imageUrl) return null;
-
-  try {
-    await ensureCacheDir();
-    const cachePath = getArtworkCachePath(spotifyId, imageUrl);
-
-    // Check if already cached
-    try {
-      await stat(cachePath);
-      // File exists, return relative path
-      return `/cache/${cachePath.split('/').pop()}`;
-    } catch {
-      // File doesn't exist, fetch and cache it
-    }
-
-    const response = await fetch(imageUrl);
-    if (!response.ok) {
-      return null;
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    await writeFile(cachePath, buffer);
-
-    return `/cache/${cachePath.split('/').pop()}`;
-  } catch (error) {
-    console.error(`Failed to cache artwork for ${spotifyId}:`, error);
-    return null;
-  }
-}
-
-// Get cached artwork or return original URL
-async function getCachedArtworkUrl(spotifyId: string, imageUrl: string): Promise<string> {
-  if (!imageUrl) return '';
-
-  const cached = await cacheArtwork(spotifyId, imageUrl);
-  return cached || imageUrl;
 }
 
 // Clean up expired cache files
@@ -921,27 +876,70 @@ export function createSpotifyRoutes() {
         const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { hasUrl: !!imageUrl });
 
         try {
-          // Fetch image directly
-          const response = await fetch(imageUrl);
-          if (!response.ok) {
-            traceApiEnd(traceContext, response.status, { error: "Failed to fetch image" });
-            return Response.json({ error: "Failed to fetch image" }, { status: response.status });
+          await ensureCacheDir();
+          const cachePath = getImageCachePath(imageUrl);
+
+          // Check if image is already cached and not expired
+          let buffer: Buffer;
+          let contentType: string;
+          let fromCache = false;
+
+          try {
+            const stats = await stat(cachePath);
+            const age = Date.now() - stats.mtimeMs;
+            
+            if (age < CACHE_DURATION) {
+              // Cache is valid, read from cache
+              buffer = await readFile(cachePath);
+              fromCache = true;
+              
+              // Determine content type from file extension
+              const ext = cachePath.split('.').pop()?.toLowerCase();
+              contentType = 
+                ext === 'png' ? 'image/png' :
+                ext === 'gif' ? 'image/gif' :
+                ext === 'webp' ? 'image/webp' :
+                'image/jpeg';
+            } else {
+              // Cache expired, delete it
+              await unlink(cachePath);
+              throw new Error('Cache expired');
+            }
+          } catch {
+            // Cache doesn't exist or expired, fetch and cache
+            const response = await fetch(imageUrl);
+            if (!response.ok) {
+              traceApiEnd(traceContext, response.status, { error: "Failed to fetch image" });
+              return Response.json({ error: "Failed to fetch image" }, { status: response.status });
+            }
+
+            // Get the image data as array buffer
+            const arrayBuffer = await response.arrayBuffer();
+            buffer = Buffer.from(arrayBuffer);
+
+            // Determine content type from response or URL
+            contentType = response.headers.get('content-type') ||
+              (imageUrl.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' :
+                imageUrl.match(/\.png$/i) ? 'image/png' :
+                  imageUrl.match(/\.gif$/i) ? 'image/gif' :
+                    imageUrl.match(/\.webp$/i) ? 'image/webp' :
+                      'image/jpeg');
+
+            // Cache the image to disk
+            try {
+              await writeFile(cachePath, buffer);
+            } catch (error) {
+              console.error(`Failed to cache image for ${imageUrl}:`, error);
+              // Continue even if caching fails
+            }
           }
 
-          // Get the image data as array buffer
-          const arrayBuffer = await response.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-
-          // Determine content type from response or URL
-          const contentType = response.headers.get('content-type') ||
-            (imageUrl.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' :
-              imageUrl.match(/\.png$/i) ? 'image/png' :
-                imageUrl.match(/\.gif$/i) ? 'image/gif' :
-                  imageUrl.match(/\.webp$/i) ? 'image/webp' :
-                    'image/jpeg');
-
-          traceApiEnd(traceContext, 200, { contentType, size: buffer.length });
-          return new Response(buffer, {
+          traceApiEnd(traceContext, 200, { 
+            contentType, 
+            size: buffer.length,
+            fromCache 
+          });
+          return new Response(new Uint8Array(buffer), {
             headers: {
               'Content-Type': contentType,
               'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
