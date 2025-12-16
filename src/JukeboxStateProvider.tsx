@@ -173,6 +173,8 @@ export interface JukeboxStateContextValue {
   seek: (position: number) => Promise<void>;
   toggleRepeat: () => Promise<void>;
   toggleShuffle: () => Promise<void>;
+  addToQueue: (spotifyId: string) => Promise<void>;
+  fetchTracksFromSpotifyId: (spotifyId: string) => Promise<string[]>;
   setLoadingSpotifyId: (id: string | null) => void;
   setStatusMessage: (message: string | ((prev: string) => string)) => void;
   setThemeName: (name: string) => void;
@@ -514,6 +516,116 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     await apiCall('/player/shuffle_context', 'POST', { shuffle_context: newValue });
   }, [apiCall, playerState.shuffleContext]);
 
+  const fetchTracksFromSpotifyId = useCallback(async (spotifyId: string): Promise<string[]> => {
+    try {
+      // Parse Spotify URI: spotify:track:xxx or spotify:album:xxx
+      const parts = spotifyId.split(':');
+      if (parts.length < 3 || parts[0] !== 'spotify') {
+        throw new Error('Invalid Spotify URI');
+      }
+
+      const type = parts[1]; // track, album, playlist, artist
+      const spotifyIdValue = parts[2]; // The actual ID
+
+      if (type === 'track') {
+        // Single track, return as-is
+        return [spotifyId];
+      }
+
+      let tracks: string[] = [];
+
+      if (type === 'album') {
+        // Fetch album tracks through server
+        let offset = 0;
+        const limit = 50;
+        while (true) {
+          const data = await apiCall(`/api/spotify/albums/${encodeURIComponent(spotifyIdValue)}/tracks?limit=${limit}&offset=${offset}`, 'GET', undefined);
+          if (!data || !data.items) {
+            throw new Error('Failed to fetch album tracks');
+          }
+
+          tracks.push(...data.items.map((item: any) => item.uri));
+
+          if (!data.next) {
+            break;
+          }
+          offset += limit;
+        }
+      } else if (type === 'playlist') {
+        // Fetch playlist tracks through server
+        let offset = 0;
+        const limit = 50;
+        while (true) {
+          const data = await apiCall(`/api/spotify/playlists/${encodeURIComponent(spotifyIdValue)}/tracks?limit=${limit}&offset=${offset}`, 'GET', undefined);
+          if (!data || !data.items) {
+            throw new Error('Failed to fetch playlist tracks');
+          }
+
+          tracks.push(...data.items
+            .filter((item: any) => item.track && item.track.uri)
+            .map((item: any) => item.track.uri));
+
+          if (!data.next) {
+            break;
+          }
+          offset += limit;
+        }
+      } else if (type === 'artist') {
+        // Fetch artist's top tracks through server
+        const data = await apiCall(`/api/spotify/artists/${encodeURIComponent(spotifyIdValue)}/top-tracks?market=US`, 'GET', undefined);
+        if (!data || !data.tracks) {
+          throw new Error('Failed to fetch artist top tracks');
+        }
+
+        tracks = data.tracks.map((track: any) => track.uri);
+      } else {
+        throw new Error(`Unsupported type: ${type}`);
+      }
+
+      return tracks;
+    } catch (error) {
+      console.error('Failed to fetch tracks from Spotify ID:', error);
+      throw error;
+    }
+  }, [apiCall]);
+
+  const addToQueue = useCallback(async (spotifyId: string) => {
+    setLoadingSpotifyId(spotifyId);
+    try {
+      // Fetch all tracks (handles single tracks, albums, playlists, artists)
+      const tracks = await fetchTracksFromSpotifyId(spotifyId);
+
+      if (tracks.length === 0) {
+        setStatusMessage(`No tracks found for ${spotifyId}`);
+        setLoadingSpotifyId(null);
+        return;
+      }
+
+      // Enqueue tracks sequentially
+      setStatusMessage(`Adding ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue...`);
+
+      for (let i = 0; i < tracks.length; i++) {
+        await apiCall('/player/add_to_queue', 'POST', { uri: tracks[i] });
+        // Small delay between requests to avoid overwhelming the API
+        if (i < tracks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      const successMessage = `Added ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue`;
+      setStatusMessage(successMessage);
+      setTimeout(() => {
+        // Clear the success message after 3 seconds
+        setStatusMessage(prev => prev === successMessage ? '' : prev);
+      }, 3000);
+    } catch (error) {
+      console.error('Failed to add to queue:', error);
+      setStatusMessage(`Error adding to queue: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoadingSpotifyId(null);
+    }
+  }, [apiCall, fetchTracksFromSpotifyId, setLoadingSpotifyId, setStatusMessage]);
+
   // Initialize on mount
   useEffect(() => {
     fetchKioskMode();
@@ -594,6 +706,8 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     seek,
     toggleRepeat,
     toggleShuffle,
+    addToQueue,
+    fetchTracksFromSpotifyId,
     setLoadingSpotifyId,
     setStatusMessage,
     setThemeName,
