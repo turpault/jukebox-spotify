@@ -160,7 +160,11 @@ export interface JukeboxStateContextValue {
   isKioskMode: boolean;
   hotkeys: HotkeyConfig | null;
   isThemeLoaded: boolean;
+  isViewLoaded: boolean;
+  isHotkeysLoaded: boolean;
+  isKioskModeLoaded: boolean;
   isConnectionStatusKnown: boolean;
+  isConfigLoaded: boolean;
 
   // Spotify data
   loadingSpotifyId: string | null;
@@ -226,6 +230,9 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
   const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
   const [isThemeLoaded, setIsThemeLoaded] = useState<boolean>(false);
+  const [isViewLoaded, setIsViewLoaded] = useState<boolean>(false);
+  const [isHotkeysLoaded, setIsHotkeysLoaded] = useState<boolean>(false);
+  const [isKioskModeLoaded, setIsKioskModeLoaded] = useState<boolean>(false);
   const [isConnectionStatusKnown, setIsConnectionStatusKnown] = useState<boolean>(false);
 
   // Spotify data
@@ -433,8 +440,10 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
       if (response && typeof response.kiosk === 'boolean') {
         setIsKioskMode(response.kiosk);
       }
+      setIsKioskModeLoaded(true);
     } catch (error) {
       console.error('Failed to fetch kiosk mode:', error);
+      setIsKioskModeLoaded(true); // Mark as loaded even on error to prevent infinite spinner
     }
   }, [apiCall]);
 
@@ -457,8 +466,10 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
       if (response && response.view) {
         setViewName(response.view);
       }
+      setIsViewLoaded(true);
     } catch (error) {
       console.error('Failed to fetch view:', error);
+      setIsViewLoaded(true); // Mark as loaded even on error to prevent infinite spinner
     }
   }, [apiCall]);
 
@@ -468,8 +479,10 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
       if (response) {
         setHotkeys(response);
       }
+      setIsHotkeysLoaded(true);
     } catch (error) {
       console.error('Failed to fetch hotkeys:', error);
+      setIsHotkeysLoaded(true); // Mark as loaded even on error to prevent infinite spinner
     }
   }, [apiCall]);
 
@@ -716,6 +729,9 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     }
   }, [playerState.currentTrack?.uri, fetchTrackArtistUri]);
 
+  // Compute if all config is loaded
+  const isConfigLoaded = isThemeLoaded && isViewLoaded && isHotkeysLoaded && isKioskModeLoaded && isConnectionStatusKnown;
+
   const value: JukeboxStateContextValue = {
     playerState,
     statusMessage,
@@ -725,7 +741,11 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     isKioskMode,
     hotkeys,
     isThemeLoaded,
+    isViewLoaded,
+    isHotkeysLoaded,
+    isKioskModeLoaded,
     isConnectionStatusKnown,
+    isConfigLoaded,
     loadingSpotifyId,
     togglePlay,
     nextTrack,

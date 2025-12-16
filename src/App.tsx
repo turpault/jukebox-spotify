@@ -229,6 +229,7 @@ export default function App() {
     hotkeys,
     isThemeLoaded,
     isConnectionStatusKnown,
+    isConfigLoaded,
     loadingSpotifyId,
     togglePlay,
     nextTrack,
@@ -542,6 +543,33 @@ export default function App() {
       document.head.appendChild(style);
     }
   }, []);
+
+  // Show loading spinner until all config is loaded
+  if (!isConfigLoaded) {
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#000000',
+        zIndex: 10000,
+      }}>
+        <div style={{
+          width: '60px',
+          height: '60px',
+          border: '4px solid #333333',
+          borderTop: '4px solid #ffffff',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+        }} />
+      </div>
+    );
+  }
 
   if (!isConnected && isConnectionStatusKnown) {
     return (
