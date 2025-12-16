@@ -207,7 +207,16 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     repeatTrack: false,
     shuffleContext: false,
   });
-  const [statusMessage, setStatusMessage] = useState("Connecting to go-librespot...");
+  const [statusMessage, setStatusMessageState] = useState("Connecting to go-librespot...");
+  
+  // Wrapper to support both string and function updates
+  const setStatusMessage = useCallback((message: string | ((prev: string) => string)) => {
+    if (typeof message === 'function') {
+      setStatusMessageState(prev => message(prev));
+    } else {
+      setStatusMessageState(message);
+    }
+  }, []);
   const [isConnected, setIsConnected] = useState(false);
   
   // UI state
