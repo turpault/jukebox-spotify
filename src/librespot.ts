@@ -173,96 +173,261 @@ export function createLibrespotWebSocket() {
   return {
     async open(ws: any) {
       traceWebSocketConnection('open', 'inbound', { clientConnected: true });
-      try {
-        // Connect to go-librespot WebSocket
-        traceWebSocket('Connecting to go-librespot', 'outbound', { url: LIBRESPOT_WS_URL });
-        const librespotWs = new WebSocket(LIBRESPOT_WS_URL);
+      
+      // Store connection state
+      const state = {
+        librespotWs: null as WebSocket | null,
+        reconnectTimeout: null as ReturnType<typeof setTimeout> | null,
+        reconnectAttempts: 0,
+        messageQueue: [] as (string | ArrayBuffer | Uint8Array)[],
+        isClientClosed: false,
+        maxReconnectDelay: 30000, // 30 seconds max delay
+        initialReconnectDelay: 1000, // Start with 1 second
+      };
+      
+      (ws as any).librespotState = state;
+      
+      // Function to connect to go-librespot
+      const connectToLibrespot = () => {
+        // Clear any existing reconnection timeout
+        if (state.reconnectTimeout) {
+          clearTimeout(state.reconnectTimeout);
+          state.reconnectTimeout = null;
+        }
         
-        librespotWs.onopen = () => {
-          traceWebSocketConnection('open', 'outbound', { librespotConnected: true });
-        };
+        // Don't try to reconnect if client is closed
+        if (state.isClientClosed) {
+          return;
+        }
         
-        // Forward messages from go-librespot to client
-        librespotWs.onmessage = (event: MessageEvent) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            traceWebSocket('Message from go-librespot to client', 'inbound', 
-              typeof event.data === 'string' ? event.data : '[binary data]');
-            ws.send(event.data);
-          }
-        };
-        
-        // Forward messages from client to go-librespot
-        ws.onmessage = (message: string | ArrayBuffer | Uint8Array) => {
-          if (librespotWs.readyState === WebSocket.OPEN) {
-            const messageStr = typeof message === 'string' ? message : '[binary data]';
-            traceWebSocket('Message from client to go-librespot', 'outbound', messageStr);
-            if (typeof message === 'string') {
-              librespotWs.send(message);
-            } else if (message instanceof ArrayBuffer) {
-              librespotWs.send(message);
-            } else if (message instanceof Uint8Array) {
-              librespotWs.send(message);
+        // Close existing connection if any
+        if (state.librespotWs) {
+          try {
+            state.librespotWs.onclose = null;
+            state.librespotWs.onerror = null;
+            state.librespotWs.onmessage = null;
+            state.librespotWs.onopen = null;
+            if (state.librespotWs.readyState === WebSocket.OPEN || state.librespotWs.readyState === WebSocket.CONNECTING) {
+              state.librespotWs.close();
             }
+          } catch (e) {
+            // Ignore errors when closing
           }
-        };
+          state.librespotWs = null;
+        }
         
-        // Handle errors
-        librespotWs.onerror = (error: Event) => {
-          traceWebSocket('go-librespot WebSocket error', 'outbound', null, error);
-          console.error('go-librespot WebSocket error:', error);
-          ws.close();
-        };
-        
-        librespotWs.onclose = (event: CloseEvent) => {
-          traceWebSocketConnection('close', 'outbound', { 
-            code: event.code, 
-            reason: event.reason, 
-            wasClean: event.wasClean 
+        try {
+          traceWebSocket('Connecting to go-librespot', 'outbound', { 
+            url: LIBRESPOT_WS_URL,
+            attempt: state.reconnectAttempts + 1 
           });
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.close();
+          const librespotWs = new WebSocket(LIBRESPOT_WS_URL);
+          state.librespotWs = librespotWs;
+          
+          librespotWs.onopen = () => {
+            traceWebSocketConnection('open', 'outbound', { librespotConnected: true });
+            state.reconnectAttempts = 0; // Reset on successful connection
+            
+            // Send any queued messages
+            while (state.messageQueue.length > 0 && librespotWs.readyState === WebSocket.OPEN) {
+              const queuedMessage = state.messageQueue.shift();
+              if (queuedMessage) {
+                try {
+                  if (typeof queuedMessage === 'string') {
+                    librespotWs.send(queuedMessage);
+                  } else if (queuedMessage instanceof ArrayBuffer) {
+                    librespotWs.send(queuedMessage);
+                  } else if (queuedMessage instanceof Uint8Array) {
+                    librespotWs.send(queuedMessage);
+                  }
+                } catch (e) {
+                  // If send fails, put message back in queue
+                  state.messageQueue.unshift(queuedMessage);
+                  break;
+                }
+              }
+            }
+          };
+          
+          // Forward messages from go-librespot to client
+          librespotWs.onmessage = (event: MessageEvent) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              traceWebSocket('Message from go-librespot to client', 'inbound', 
+                typeof event.data === 'string' ? event.data : '[binary data]');
+              try {
+                ws.send(event.data);
+              } catch (e) {
+                console.error('Failed to send message to client:', e);
+              }
+            }
+          };
+          
+          // Handle errors - don't close client connection, just try to reconnect
+          librespotWs.onerror = (error: Event) => {
+            traceWebSocket('go-librespot WebSocket error', 'outbound', null, error);
+            console.error('go-librespot WebSocket error:', error);
+            // Don't close client connection, will reconnect below
+          };
+          
+          librespotWs.onclose = (event: CloseEvent) => {
+            traceWebSocketConnection('close', 'outbound', { 
+              code: event.code, 
+              reason: event.reason, 
+              wasClean: event.wasClean 
+            });
+            
+            // Don't close client connection, try to reconnect
+            if (!state.isClientClosed && ws.readyState === WebSocket.OPEN) {
+              // Calculate exponential backoff delay
+              const delay = Math.min(
+                state.initialReconnectDelay * Math.pow(2, state.reconnectAttempts),
+                state.maxReconnectDelay
+              );
+              state.reconnectAttempts++;
+              
+              traceWebSocket('Scheduling reconnect to go-librespot', 'outbound', { 
+                delayMs: delay,
+                attempt: state.reconnectAttempts 
+              });
+              
+              state.reconnectTimeout = setTimeout(() => {
+                connectToLibrespot();
+              }, delay);
+            }
+          };
+        } catch (error) {
+          traceWebSocket('Failed to create go-librespot WebSocket connection', 'outbound', null, error);
+          console.error('Failed to create go-librespot WebSocket connection:', error);
+          
+          // Schedule reconnect
+          if (!state.isClientClosed && ws.readyState === WebSocket.OPEN) {
+            const delay = Math.min(
+              state.initialReconnectDelay * Math.pow(2, state.reconnectAttempts),
+              state.maxReconnectDelay
+            );
+            state.reconnectAttempts++;
+            
+            state.reconnectTimeout = setTimeout(() => {
+              connectToLibrespot();
+            }, delay);
           }
-        };
-        
-        ws.onclose = (event: CloseEvent) => {
-          traceWebSocketConnection('close', 'inbound', { 
-            code: event.code, 
-            reason: event.reason, 
-            wasClean: event.wasClean 
-          });
-          if (librespotWs.readyState === WebSocket.OPEN) {
-            librespotWs.close();
+        }
+      };
+      
+      // Forward messages from client to go-librespot
+      ws.onmessage = (message: string | ArrayBuffer | Uint8Array) => {
+        if (state.librespotWs && state.librespotWs.readyState === WebSocket.OPEN) {
+          const messageStr = typeof message === 'string' ? message : '[binary data]';
+          traceWebSocket('Message from client to go-librespot', 'outbound', messageStr);
+          try {
+            if (typeof message === 'string') {
+              state.librespotWs.send(message);
+            } else if (message instanceof ArrayBuffer) {
+              state.librespotWs.send(message);
+            } else if (message instanceof Uint8Array) {
+              state.librespotWs.send(message);
+            }
+          } catch (e) {
+            console.error('Failed to send message to go-librespot:', e);
+            // Queue message for later if connection is lost
+            state.messageQueue.push(message);
           }
-        };
+        } else {
+          // Queue message if not connected
+          state.messageQueue.push(message);
+          traceWebSocket('Queued message from client (go-librespot not connected)', 'outbound', 
+            typeof message === 'string' ? message : '[binary data]');
+        }
+      };
+      
+      ws.onclose = (event: CloseEvent) => {
+        traceWebSocketConnection('close', 'inbound', { 
+          code: event.code, 
+          reason: event.reason, 
+          wasClean: event.wasClean 
+        });
+        state.isClientClosed = true;
         
-        // Store the librespot connection on the ws object
-        (ws as any).librespotWs = librespotWs;
-      } catch (error) {
-        traceWebSocket('Failed to connect to go-librespot WebSocket', 'outbound', null, error);
-        console.error('Failed to connect to go-librespot WebSocket:', error);
-        ws.close();
-      }
+        // Clear reconnection timeout
+        if (state.reconnectTimeout) {
+          clearTimeout(state.reconnectTimeout);
+          state.reconnectTimeout = null;
+        }
+        
+        // Close librespot connection
+        if (state.librespotWs) {
+          try {
+            state.librespotWs.onclose = null;
+            state.librespotWs.onerror = null;
+            state.librespotWs.onmessage = null;
+            state.librespotWs.onopen = null;
+            if (state.librespotWs.readyState === WebSocket.OPEN || state.librespotWs.readyState === WebSocket.CONNECTING) {
+              state.librespotWs.close();
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+          state.librespotWs = null;
+        }
+      };
+      
+      // Initial connection attempt
+      connectToLibrespot();
     },
     message(ws: any, message: string | ArrayBuffer | Uint8Array) {
       // Forward message to go-librespot
-      const librespotWs = (ws as any).librespotWs;
-      if (librespotWs && librespotWs.readyState === WebSocket.OPEN) {
+      const state = (ws as any).librespotState;
+      if (!state) return;
+      
+      if (state.librespotWs && state.librespotWs.readyState === WebSocket.OPEN) {
         const messageStr = typeof message === 'string' ? message : '[binary data]';
         traceWebSocket('Message from client to go-librespot', 'outbound', messageStr);
-        if (typeof message === 'string') {
-          librespotWs.send(message);
-        } else if (message instanceof ArrayBuffer) {
-          librespotWs.send(message);
-        } else if (message instanceof Uint8Array) {
-          librespotWs.send(message);
+        try {
+          if (typeof message === 'string') {
+            state.librespotWs.send(message);
+          } else if (message instanceof ArrayBuffer) {
+            state.librespotWs.send(message);
+          } else if (message instanceof Uint8Array) {
+            state.librespotWs.send(message);
+          }
+        } catch (e) {
+          console.error('Failed to send message to go-librespot:', e);
+          state.messageQueue.push(message);
         }
+      } else {
+        // Queue message if not connected
+        state.messageQueue.push(message);
+        traceWebSocket('Queued message from client (go-librespot not connected)', 'outbound', 
+          typeof message === 'string' ? message : '[binary data]');
       }
     },
     close(ws: any) {
       traceWebSocketConnection('close', 'inbound');
-      const librespotWs = (ws as any).librespotWs;
-      if (librespotWs && librespotWs.readyState === WebSocket.OPEN) {
-        librespotWs.close();
+      const state = (ws as any).librespotState;
+      if (!state) return;
+      
+      state.isClientClosed = true;
+      
+      // Clear reconnection timeout
+      if (state.reconnectTimeout) {
+        clearTimeout(state.reconnectTimeout);
+        state.reconnectTimeout = null;
+      }
+      
+      // Close librespot connection
+      if (state.librespotWs) {
+        try {
+          state.librespotWs.onclose = null;
+          state.librespotWs.onerror = null;
+          state.librespotWs.onmessage = null;
+          state.librespotWs.onopen = null;
+          if (state.librespotWs.readyState === WebSocket.OPEN || state.librespotWs.readyState === WebSocket.CONNECTING) {
+            state.librespotWs.close();
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+        state.librespotWs = null;
       }
     },
   };
