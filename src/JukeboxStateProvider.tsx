@@ -239,7 +239,7 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
   const [loadingSpotifyId, setLoadingSpotifyId] = useState<string | null>(null);
 
   // Refs
-  const pollAbortControllerRef = useRef<AbortController | null>(null);
+  const pollAbortedRef = useRef<boolean>(false);
   const stateVersionRef = useRef<number>(0);
   const gamepadPollIntervalRef = useRef<number | null>(null);
   const lastGamepadStateRef = useRef<boolean[]>([]);
@@ -338,28 +338,24 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
 
   const pollEvents = useCallback(async () => {
     while (true) {
-      if (pollAbortControllerRef.current) {
-        pollAbortControllerRef.current.abort();
-      }
-
-      const abortController = new AbortController();
-      pollAbortControllerRef.current = abortController;
+      // Reset abort flag for new poll
+      pollAbortedRef.current = false;
 
       try {
         const url = `/api/events?version=${stateVersionRef.current}&timeout=30000`;
         logPlayerEvent('Polling for events', { version: stateVersionRef.current });
+        const response = await fetch(url);
 
-        const response = await fetch(url, {
-          signal: abortController.signal,
-        });
+        // Check if poll was aborted before processing response
+        if (pollAbortedRef.current) {
+          return;
+        }
 
         if (!response.ok) {
           throw new Error(`Poll failed: ${response.status} ${response.statusText}`);
         }
-
         const result = await response.json();
         logPlayerEvent('Events received', result);
-
         // Update connection status based on server response
         // Long polling timeouts are normal and don't indicate disconnection
         // The server always returns the current connection status
@@ -369,11 +365,9 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
         } else {
           setStatusMessage("No Spotify Connect instance connected");
         }
-
         if (result.version !== undefined) {
           stateVersionRef.current = result.version;
         }
-
         if (result.state) {
           const state = result.state;
           setPlayerState(prev => {
@@ -396,7 +390,8 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
           });
         }
       } catch (error: any) {
-        if (abortController.signal.aborted) {
+        // Check if poll was aborted
+        if (pollAbortedRef.current) {
           return;
         }
 
@@ -691,10 +686,8 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     startPolling();
 
     return () => {
-      if (pollAbortControllerRef.current) {
-        pollAbortControllerRef.current.abort();
-        pollAbortControllerRef.current = null;
-      }
+      // Set abort flag to stop polling
+      pollAbortedRef.current = true;
       if (gamepadPollIntervalRef.current) {
         clearInterval(gamepadPollIntervalRef.current);
       }
