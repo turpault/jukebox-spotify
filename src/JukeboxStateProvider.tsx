@@ -154,18 +154,18 @@ export interface JukeboxStateContextValue {
   playerState: PlayerState;
   statusMessage: string;
   isConnected: boolean;
-  
+
   // UI state
   themeName: string;
   viewName: string;
   isKioskMode: boolean;
   hotkeys: HotkeyConfig | null;
-  
+
   // Spotify data
   configuredSpotifyIds: SpotifyIdWithArtwork[];
   recentArtists: SpotifyIdWithArtwork[];
   loadingSpotifyId: string | null;
-  
+
   // Actions
   togglePlay: () => Promise<void>;
   nextTrack: () => Promise<void>;
@@ -208,7 +208,7 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     shuffleContext: false,
   });
   const [statusMessage, setStatusMessageState] = useState("Connecting to go-librespot...");
-  
+
   // Wrapper to support both string and function updates
   const setStatusMessage = useCallback((message: string | ((prev: string) => string)) => {
     if (typeof message === 'function') {
@@ -218,18 +218,18 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     }
   }, []);
   const [isConnected, setIsConnected] = useState(false);
-  
+
   // UI state
   const [themeName, setThemeName] = useState<string>('steampunk');
   const [viewName, setViewName] = useState<string>('default');
   const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
-  
+
   // Spotify data
   const [configuredSpotifyIds, setConfiguredSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
   const [recentArtists, setRecentArtists] = useState<SpotifyIdWithArtwork[]>([]);
   const [loadingSpotifyId, setLoadingSpotifyId] = useState<string | null>(null);
-  
+
   // Refs
   const pollAbortControllerRef = useRef<AbortController | null>(null);
   const stateVersionRef = useRef<number>(0);
@@ -424,12 +424,13 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
 
         logWebSocket('Poll error', null, error);
         setIsConnected(false);
-        setStatusMessage("Reconnecting...");
+        setStatusMessage(`Connection error: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
+        // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
-  }, []);
+  }, [setIsConnected, setStatusMessage, setPlayerState]);
 
   const fetchKioskMode = useCallback(async () => {
     try {
@@ -584,13 +585,29 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     fetchSpotifyIds();
     fetchRecentArtists();
     fetchPlaybackStatus();
-    pollEvents();
+    
+    // Start polling - handle errors properly
+    const startPolling = async () => {
+      try {
+        await pollEvents();
+      } catch (error) {
+        console.error('Failed to start polling:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+          setStatusMessage("Cannot connect to server. Is the server running?");
+        } else {
+          setStatusMessage(`Failed to connect: ${errorMessage}`);
+        }
+        setIsConnected(false);
+      }
+    };
+    startPolling();
 
     configPollIntervalRef.current = window.setInterval(() => {
       checkConfigVersion();
     }, 2000);
 
-    checkConfigVersion().then(() => {});
+    checkConfigVersion().then(() => { });
 
     return () => {
       if (pollAbortControllerRef.current) {
