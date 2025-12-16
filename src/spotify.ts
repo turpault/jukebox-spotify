@@ -653,364 +653,343 @@ export async function handleMetadataRequest(req: Request): Promise<Response> {
   }
 }
 
-export function createSpotifyRoutes() {
-  return {
-    // Spotify track API
-    "/api/spotify/tracks/:id": {
-      GET: async (req: Request) => {
-        const result = await handleTrackRequest(req);
-        if (result === null) {
-          return Response.json({ error: "Invalid track request" }, { status: 400 });
-        }
-        return result;
-      },
-    },
-    // Spotify album tracks API
-    "/api/spotify/albums/:id/tracks": {
-      GET: async (req: Request) => {
-        const result = await handleAlbumTracksRequest(req);
-        if (result === null) {
-          return Response.json({ error: "Invalid album tracks request" }, { status: 400 });
-        }
-        return result;
-      },
-    },
-    // Spotify playlist tracks API
-    "/api/spotify/playlists/:id/tracks": {
-      GET: async (req: Request) => {
-        const result = await handlePlaylistTracksRequest(req);
-        if (result === null) {
-          return Response.json({ error: "Invalid playlist tracks request" }, { status: 400 });
-        }
-        return result;
-      },
-    },
-    // Spotify artist top tracks API
-    "/api/spotify/artists/:id/top-tracks": {
-      GET: async (req: Request) => {
-        const result = await handleArtistTopTracksRequest(req);
-        if (result === null) {
-          return Response.json({ error: "Invalid artist top tracks request" }, { status: 400 });
-        }
-        return result;
-      },
-    },
-    // Spotify metadata API - dynamic route with :id parameter
-    "/api/spotify/metadata/:id": {
-      GET: async (req: Request) => {
-        return handleMetadataRequest(req);
-      },
-    },
-    // Note: /api/spotify/token endpoint removed - clients no longer need it
-    // All Spotify API calls go through server endpoints which automatically inject the token
-    // Configured Spotify IDs API - returns just the list of IDs
-    "/api/spotify/ids": {
-      GET: async () => {
-        const traceContext = traceApiStart('GET', '/api/spotify/ids', 'inbound');
-        try {
-          const config = await getConfig();
-          const spotifyIds = config.spotify?.configuredSpotifyIds || [];
-          traceApiEnd(traceContext, 200, { idsCount: spotifyIds.length });
-          return Response.json({ ids: spotifyIds });
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to get Spotify IDs" }, { status: 500 });
-        }
-      },
-      POST: async (req: Request) => {
-        const body = await req.json() as { ids?: string[] };
-        const traceContext = traceApiStart('POST', '/api/spotify/ids', 'inbound', { idsCount: body.ids?.length || 0 });
-        try {
-          const ids = body.ids || [];
+// Spotify track API handler
+export async function handleGetTrack(req: Request) {
+  const result = await handleTrackRequest(req);
+  if (result === null) {
+    return Response.json({ error: "Invalid track request" }, { status: 400 });
+  }
+  return result;
+}
 
-          const config = await getConfig();
-          if (!config.spotify) {
-            config.spotify = {};
-          }
-          config.spotify.configuredSpotifyIds = ids;
-          await setConfig(config);
+// Spotify album tracks API handler
+export async function handleGetAlbumTracks(req: Request) {
+  const result = await handleAlbumTracksRequest(req);
+  if (result === null) {
+    return Response.json({ error: "Invalid album tracks request" }, { status: 400 });
+  }
+  return result;
+}
 
-          traceApiEnd(traceContext, 200, { success: true });
-          return Response.json({ success: true });
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to set Spotify IDs" }, { status: 500 });
-        }
-      },
-    },
-    // Recently played artists API - returns just the list of IDs
-    "/api/spotify/recent-artists": {
-      GET: async () => {
-        const traceContext = traceApiStart('GET', '/api/spotify/recent-artists', 'inbound');
-        try {
-          const config = await getConfig();
-          const artistIds = config.spotify?.recentlyPlayedArtists || [];
-          traceApiEnd(traceContext, 200, { idsCount: artistIds.length });
-          return Response.json({ ids: artistIds });
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to get recent artists" }, { status: 500 });
-        }
-      },
-      POST: async (req: Request) => {
-        const body = await req.json() as { artistId?: string };
-        const traceContext = traceApiStart('POST', '/api/spotify/recent-artists', 'inbound', { artistId: body.artistId });
-        try {
-          if (!body.artistId) {
-            traceApiEnd(traceContext, 400, { error: "Artist ID is required" });
-            return Response.json({ error: "Artist ID is required" }, { status: 400 });
-          }
+// Spotify playlist tracks API handler
+export async function handleGetPlaylistTracks(req: Request) {
+  const result = await handlePlaylistTracksRequest(req);
+  if (result === null) {
+    return Response.json({ error: "Invalid playlist tracks request" }, { status: 400 });
+  }
+  return result;
+}
 
-          const config = await getConfig();
-          if (!config.spotify) {
-            config.spotify = {};
-          }
-          if (!config.spotify.recentlyPlayedArtists) {
-            config.spotify.recentlyPlayedArtists = [];
-          }
+// Spotify artist top tracks API handler
+export async function handleGetArtistTopTracks(req: Request) {
+  const result = await handleArtistTopTracksRequest(req);
+  if (result === null) {
+    return Response.json({ error: "Invalid artist top tracks request" }, { status: 400 });
+  }
+  return result;
+}
 
-          // Add to beginning if not already present
-          const artistIds = config.spotify.recentlyPlayedArtists;
-          if (!artistIds.includes(body.artistId)) {
-            artistIds.unshift(body.artistId);
-            // Limit to configured limit (default 20)
-            const limit = config.spotify.recentArtistsLimit || 20;
-            if (artistIds.length > limit) {
-              artistIds.splice(limit);
-            }
-            config.spotify.recentlyPlayedArtists = artistIds;
-            await setConfig(config);
-          }
+// Spotify metadata API handler
+export async function handleGetMetadata(req: Request) {
+  return handleMetadataRequest(req);
+}
+// Configured Spotify IDs API handlers
+export async function handleGetSpotifyIds() {
+  const traceContext = traceApiStart('GET', '/api/spotify/ids', 'inbound');
+  try {
+    const config = await getConfig();
+    const spotifyIds = config.spotify?.configuredSpotifyIds || [];
+    traceApiEnd(traceContext, 200, { idsCount: spotifyIds.length });
+    return Response.json({ ids: spotifyIds });
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to get Spotify IDs" }, { status: 500 });
+  }
+}
 
-          traceApiEnd(traceContext, 200, { success: true });
-          return Response.json({ success: true });
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to add recent artist" }, { status: 500 });
-        }
-      },
-      DELETE: async () => {
-        const traceContext = traceApiStart('DELETE', '/api/spotify/recent-artists', 'inbound');
-        try {
-          const config = await getConfig();
-          if (config.spotify) {
-            config.spotify.recentlyPlayedArtists = [];
-            await setConfig(config);
-          }
-          traceApiEnd(traceContext, 200, { success: true });
-          return Response.json({ success: true });
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to clear recent artists" }, { status: 500 });
-        }
-      },
-    },
-    // Spotify search API
-    "/api/spotify/search": {
-      GET: async (req: Request) => {
-        const url = new URL(req.url);
-        const query = url.searchParams.get('q');
-        const type = url.searchParams.get('type') || 'track,album,playlist,artist';
-        const traceContext = traceApiStart('GET', '/api/spotify/search', 'inbound', { query, type });
-        try {
-          if (!query) {
-            traceApiEnd(traceContext, 400, { error: "Query parameter 'q' is required" });
-            return Response.json({ error: "Query parameter 'q' is required" }, { status: 400 });
-          }
+export async function handlePostSpotifyIds(req: Request) {
+  const body = await req.json() as { ids?: string[] };
+  const traceContext = traceApiStart('POST', '/api/spotify/ids', 'inbound', { idsCount: body.ids?.length || 0 });
+  try {
+    const ids = body.ids || [];
 
-          const token = await getSpotifyToken();
-          if (!token) {
-            traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
-            return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
-          }
+    const config = await getConfig();
+    if (!config.spotify) {
+      config.spotify = {};
+    }
+    config.spotify.configuredSpotifyIds = ids;
+    await setConfig(config);
 
-          const spotifyTraceContext = traceApiStart('GET', 'https://api.spotify.com/v1/search', 'outbound', { query, type });
-          const response = await fetch(
-            `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=20`,
-            {
-              headers: {
-                'Authorization': `Bearer ${token}`,
-              },
-            }
-          );
+    traceApiEnd(traceContext, 200, { success: true });
+    return Response.json({ success: true });
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to set Spotify IDs" }, { status: 500 });
+  }
+}
+// Recently played artists API handlers
+export async function handleGetRecentArtists() {
+  const traceContext = traceApiStart('GET', '/api/spotify/recent-artists', 'inbound');
+  try {
+    const config = await getConfig();
+    const artistIds = config.spotify?.recentlyPlayedArtists || [];
+    traceApiEnd(traceContext, 200, { idsCount: artistIds.length });
+    return Response.json({ ids: artistIds });
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to get recent artists" }, { status: 500 });
+  }
+}
 
-          if (!response.ok) {
-            traceApiEnd(spotifyTraceContext, response.status, null);
-            traceApiEnd(traceContext, response.status, { error: "Spotify API error" });
-            return Response.json({ error: "Spotify API error" }, { status: response.status });
-          }
+export async function handlePostRecentArtists(req: Request) {
+  const body = await req.json() as { artistId?: string };
+  const traceContext = traceApiStart('POST', '/api/spotify/recent-artists', 'inbound', { artistId: body.artistId });
+  try {
+    if (!body.artistId) {
+      traceApiEnd(traceContext, 400, { error: "Artist ID is required" });
+      return Response.json({ error: "Artist ID is required" }, { status: 400 });
+    }
 
-          const data = await response.json();
-          traceApiEnd(spotifyTraceContext, response.status, { resultsCount: Object.keys(data).length });
-          traceApiEnd(traceContext, 200, { resultsCount: Object.keys(data).length });
-          return Response.json(data);
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to search Spotify" }, { status: 500 });
-        }
-      },
-    },
-    // Spotify config API (POST only - credentials should never be exposed via GET)
-    "/api/spotify/config": {
-      POST: async (req: Request) => {
-        const body = await req.json() as { clientId?: string; clientSecret?: string };
-        const traceContext = traceApiStart('POST', '/api/spotify/config', 'inbound', {
-          hasClientId: !!body.clientId,
-          hasClientSecret: !!body.clientSecret
-        });
-        try {
-          const config = await getConfig();
+    const config = await getConfig();
+    if (!config.spotify) {
+      config.spotify = {};
+    }
+    if (!config.spotify.recentlyPlayedArtists) {
+      config.spotify.recentlyPlayedArtists = [];
+    }
 
-          if (!config.spotify) {
-            config.spotify = {};
-          }
+    // Add to beginning if not already present
+    const artistIds = config.spotify.recentlyPlayedArtists;
+    if (!artistIds.includes(body.artistId)) {
+      artistIds.unshift(body.artistId);
+      // Limit to configured limit (default 20)
+      const limit = config.spotify.recentArtistsLimit || 20;
+      if (artistIds.length > limit) {
+        artistIds.splice(limit);
+      }
+      config.spotify.recentlyPlayedArtists = artistIds;
+      await setConfig(config);
+    }
 
-          if (body.clientId !== undefined) {
-            config.spotify.clientId = body.clientId;
-          }
-          if (body.clientSecret !== undefined) {
-            config.spotify.clientSecret = body.clientSecret;
-          }
+    traceApiEnd(traceContext, 200, { success: true });
+    return Response.json({ success: true });
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to add recent artist" }, { status: 500 });
+  }
+}
 
-          // Clear token cache when credentials change
-          clearSpotifyTokenCache();
+export async function handleDeleteRecentArtists() {
+  const traceContext = traceApiStart('DELETE', '/api/spotify/recent-artists', 'inbound');
+  try {
+    const config = await getConfig();
+    if (config.spotify) {
+      config.spotify.recentlyPlayedArtists = [];
+      await setConfig(config);
+    }
+    traceApiEnd(traceContext, 200, { success: true });
+    return Response.json({ success: true });
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to clear recent artists" }, { status: 500 });
+  }
+}
+// Spotify search API handler
+export async function handleGetSearch(req: Request) {
+  const url = new URL(req.url);
+  const query = url.searchParams.get('q');
+  const type = url.searchParams.get('type') || 'track,album,playlist,artist';
+  const traceContext = traceApiStart('GET', '/api/spotify/search', 'inbound', { query, type });
+  try {
+    if (!query) {
+      traceApiEnd(traceContext, 400, { error: "Query parameter 'q' is required" });
+      return Response.json({ error: "Query parameter 'q' is required" }, { status: 400 });
+    }
 
-          await setConfig(config);
-          traceApiEnd(traceContext, 200, { success: true });
-          return Response.json({ success: true });
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to set Spotify config" }, { status: 500 });
-        }
-      },
-    },
-    // Recent artists limit API
-    "/api/spotify/recent-artists-limit": {
-      GET: async () => {
-        const traceContext = traceApiStart('GET', '/api/spotify/recent-artists-limit', 'inbound');
-        try {
-          const config = await getConfig();
-          const limit = config.spotify?.recentArtistsLimit || 20;
-          traceApiEnd(traceContext, 200, { limit });
-          return Response.json({ limit });
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to get recent artists limit" }, { status: 500 });
-        }
-      },
-      POST: async (req: Request) => {
-        const body = await req.json() as { limit?: number };
-        const traceContext = traceApiStart('POST', '/api/spotify/recent-artists-limit', 'inbound', { limit: body.limit });
-        try {
-          const limit = body.limit;
+    const token = await getSpotifyToken();
+    if (!token) {
+      traceApiEnd(traceContext, 401, { error: "Failed to get Spotify token" });
+      return Response.json({ error: "Failed to get Spotify token" }, { status: 401 });
+    }
 
-          if (limit === undefined || limit < 1) {
-            traceApiEnd(traceContext, 400, { error: "Limit must be a positive number" });
-            return Response.json({ error: "Limit must be a positive number" }, { status: 400 });
-          }
+    const spotifyTraceContext = traceApiStart('GET', 'https://api.spotify.com/v1/search', 'outbound', { query, type });
+    const response = await fetch(
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=20`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      }
+    );
 
-          const config = await getConfig();
-          if (!config.spotify) {
-            config.spotify = {};
-          }
-          config.spotify.recentArtistsLimit = limit;
-          await setConfig(config);
+    if (!response.ok) {
+      traceApiEnd(spotifyTraceContext, response.status, null);
+      traceApiEnd(traceContext, response.status, { error: "Spotify API error" });
+      return Response.json({ error: "Spotify API error" }, { status: response.status });
+    }
 
-          traceApiEnd(traceContext, 200, { success: true, limit });
-          return Response.json({ success: true, limit });
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to set recent artists limit" }, { status: 500 });
-        }
-      },
-    },
-    // Image API - fetches image and returns binary data
-    // Route parameter is base64-encoded image URL
-    "/api/image/:base64EncodedImageUrl": {
-      GET: async (req: Request) => {
-        // Extract base64-encoded URL from route params
-        let imageUrl: string;
-        if ((req as any).params?.base64EncodedImageUrl) {
-          try {
-            imageUrl = Buffer.from((req as any).params.base64EncodedImageUrl, 'base64').toString('utf-8');
-          } catch (error) {
-            const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { error: "Invalid base64 encoding" });
-            traceApiEnd(traceContext, 400, { error: "Invalid base64 encoding" });
-            return Response.json({ error: "Invalid base64 encoding" }, { status: 400 });
-          }
-        } else {
-          const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { error: "Missing parameter" });
-          traceApiEnd(traceContext, 400, { error: "Missing base64EncodedImageUrl parameter" });
-          return Response.json({ error: "Missing base64EncodedImageUrl parameter" }, { status: 400 });
-        }
+    const data = await response.json();
+    traceApiEnd(spotifyTraceContext, response.status, { resultsCount: Object.keys(data).length });
+    traceApiEnd(traceContext, 200, { resultsCount: Object.keys(data).length });
+    return Response.json(data);
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to search Spotify" }, { status: 500 });
+  }
+}
+// Spotify config API handler
+export async function handlePostSpotifyConfig(req: Request) {
+  const body = await req.json() as { clientId?: string; clientSecret?: string };
+  const traceContext = traceApiStart('POST', '/api/spotify/config', 'inbound', {
+    hasClientId: !!body.clientId,
+    hasClientSecret: !!body.clientSecret
+  });
+  try {
+    const config = await getConfig();
 
-        const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { hasUrl: !!imageUrl });
+    if (!config.spotify) {
+      config.spotify = {};
+    }
 
-        try {
-          await ensureCacheDir();
-          const cachePath = getImageCachePath(imageUrl);
+    if (body.clientId !== undefined) {
+      config.spotify.clientId = body.clientId;
+    }
+    if (body.clientSecret !== undefined) {
+      config.spotify.clientSecret = body.clientSecret;
+    }
 
-          // Check if image is already cached (no expiration check)
-          let fromCache = false;
+    // Clear token cache when credentials change
+    clearSpotifyTokenCache();
 
-          try {
-            const stats = await stat(cachePath);
-            // Cache exists, serve from cache using Bun.file()
-            fromCache = true;
-            const file = Bun.file(cachePath);
+    await setConfig(config);
+    traceApiEnd(traceContext, 200, { success: true });
+    return Response.json({ success: true });
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to set Spotify config" }, { status: 500 });
+  }
+}
+// Recent artists limit API handlers
+export async function handleGetRecentArtistsLimit() {
+  const traceContext = traceApiStart('GET', '/api/spotify/recent-artists-limit', 'inbound');
+  try {
+    const config = await getConfig();
+    const limit = config.spotify?.recentArtistsLimit || 20;
+    traceApiEnd(traceContext, 200, { limit });
+    return Response.json({ limit });
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to get recent artists limit" }, { status: 500 });
+  }
+}
 
-            traceApiEnd(traceContext, 200, {
-              contentType: file.type || 'image/jpeg',
-              size: stats.size,
-              fromCache
-            });
+export async function handlePostRecentArtistsLimit(req: Request) {
+  const body = await req.json() as { limit?: number };
+  const traceContext = traceApiStart('POST', '/api/spotify/recent-artists-limit', 'inbound', { limit: body.limit });
+  try {
+    const limit = body.limit;
 
-            return new Response(file, {
-              headers: {
-                'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
-              },
-            });
-          } catch {
-            // Cache doesn't exist, fetch and cache
-            const response = await fetch(imageUrl);
-            if (!response.ok) {
-              traceApiEnd(traceContext, response.status, { error: "Failed to fetch image" });
-              return Response.json({ error: "Failed to fetch image" }, { status: response.status });
-            }
+    if (limit === undefined || limit < 1) {
+      traceApiEnd(traceContext, 400, { error: "Limit must be a positive number" });
+      return Response.json({ error: "Limit must be a positive number" }, { status: 400 });
+    }
 
-            // Get the image data as array buffer
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
+    const config = await getConfig();
+    if (!config.spotify) {
+      config.spotify = {};
+    }
+    config.spotify.recentArtistsLimit = limit;
+    await setConfig(config);
 
-            // Cache the image to disk
-            try {
-              await writeFile(cachePath, buffer);
-            } catch (error) {
-              console.error(`Failed to cache image for ${imageUrl}:`, error);
-              // Continue even if caching fails
-            }
+    traceApiEnd(traceContext, 200, { success: true, limit });
+    return Response.json({ success: true, limit });
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to set recent artists limit" }, { status: 500 });
+  }
+}
+// Image API handler - fetches image and returns binary data
+export async function handleGetImage(req: Request) {
+  // Extract base64-encoded URL from route params
+  let imageUrl: string;
+  if ((req as any).params?.base64EncodedImageUrl) {
+    try {
+      imageUrl = Buffer.from((req as any).params.base64EncodedImageUrl, 'base64').toString('utf-8');
+    } catch (error) {
+      const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { error: "Invalid base64 encoding" });
+      traceApiEnd(traceContext, 400, { error: "Invalid base64 encoding" });
+      return Response.json({ error: "Invalid base64 encoding" }, { status: 400 });
+    }
+  } else {
+    const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { error: "Missing parameter" });
+    traceApiEnd(traceContext, 400, { error: "Missing base64EncodedImageUrl parameter" });
+    return Response.json({ error: "Missing base64EncodedImageUrl parameter" }, { status: 400 });
+  }
 
-            // Serve the file using Bun.file() (Bun automatically sets MIME type from extension)
-            const file = Bun.file(cachePath);
-            const fileSize = buffer.length;
+  const traceContext = traceApiStart('GET', '/api/image/:base64EncodedImageUrl', 'inbound', { hasUrl: !!imageUrl });
 
-            traceApiEnd(traceContext, 200, {
-              contentType: file.type || response.headers.get('content-type') || 'image/jpeg',
-              size: fileSize,
-              fromCache: false
-            });
+  try {
+    await ensureCacheDir();
+    const cachePath = getImageCachePath(imageUrl);
 
-            return new Response(file, {
-              headers: {
-                'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
-              },
-            });
-          }
-        } catch (error) {
-          traceApiEnd(traceContext, 500, null, error);
-          return Response.json({ error: "Failed to process image" }, { status: 500 });
-        }
-      },
-    },
-  };
+    // Check if image is already cached (no expiration check)
+    let fromCache = false;
+
+    try {
+      const stats = await stat(cachePath);
+      // Cache exists, serve from cache using Bun.file()
+      fromCache = true;
+      const file = Bun.file(cachePath);
+
+      traceApiEnd(traceContext, 200, {
+        contentType: file.type || 'image/jpeg',
+        size: stats.size,
+        fromCache
+      });
+
+      return new Response(file, {
+        headers: {
+          'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
+        },
+      });
+    } catch {
+      // Cache doesn't exist, fetch and cache
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        traceApiEnd(traceContext, response.status, { error: "Failed to fetch image" });
+        return Response.json({ error: "Failed to fetch image" }, { status: response.status });
+      }
+
+      // Get the image data as array buffer
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Cache the image to disk
+      try {
+        await writeFile(cachePath, buffer);
+      } catch (error) {
+        console.error(`Failed to cache image for ${imageUrl}:`, error);
+        // Continue even if caching fails
+      }
+
+      // Serve the file using Bun.file() (Bun automatically sets MIME type from extension)
+      const file = Bun.file(cachePath);
+      const fileSize = buffer.length;
+
+      traceApiEnd(traceContext, 200, {
+        contentType: file.type || response.headers.get('content-type') || 'image/jpeg',
+        size: fileSize,
+        fromCache: false
+      });
+
+      return new Response(file, {
+        headers: {
+          'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
+        },
+      });
+    }
+  } catch (error) {
+    traceApiEnd(traceContext, 500, null, error);
+    return Response.json({ error: "Failed to process image" }, { status: 500 });
+  }
 }
