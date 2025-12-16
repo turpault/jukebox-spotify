@@ -31,8 +31,7 @@ interface SpotifyIdWithArtwork {
   imageUrl: string;
 }
 
-// All API calls are now proxied through the server
-const LIBRESPOT_API_URL = ""; // Use relative URLs to proxy through server
+// All API calls are proxied through the server (local API)
 
 // Theme system
 interface Theme {
@@ -274,9 +273,8 @@ export default function App() {
   const configVersionRef = useRef<string | null>(null);
   const configPollIntervalRef = useRef<number | null>(null);
 
-  const apiCall = async (endpoint: string, method: string = 'GET', body?: any, useLocalApi: boolean = false) => {
-    const baseUrl = useLocalApi ? '' : LIBRESPOT_API_URL;
-    const url = `${baseUrl}${endpoint}`;
+  const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
+    const url = endpoint;
     logREST(method, endpoint, body);
     
     try {
@@ -348,14 +346,14 @@ export default function App() {
   const fetchRecentArtists = useCallback(async () => {
     try {
       // First get the list of IDs
-      const idsResponse = await apiCall('/api/spotify/recent-artists', 'GET', undefined, true);
+      const idsResponse = await apiCall('/api/spotify/recent-artists', 'GET', undefined);
       if (idsResponse && idsResponse.ids) {
         const ids: string[] = idsResponse.ids;
         
         // Then fetch metadata for each ID
         const metadataPromises = ids.map(async (id: string) => {
           try {
-            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined, true);
+            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined);
             if (metadataResponse) {
               return {
                 id: metadataResponse.id || id,
@@ -389,7 +387,7 @@ export default function App() {
       const trackId = parts[2];
 
       // Fetch track details through server
-      const trackData = await apiCall(`/api/spotify/tracks/${encodeURIComponent(trackId)}`, 'GET', undefined, true);
+      const trackData = await apiCall(`/api/spotify/tracks/${encodeURIComponent(trackId)}`, 'GET', undefined);
       if (!trackData) {
         return;
       }
@@ -399,7 +397,7 @@ export default function App() {
         const artistUri = artist.uri;
 
         // Add to recent artists via API (which will handle deduplication and persistence)
-        await apiCall('/api/spotify/recent-artists', 'POST', { artistId: artistUri }, true);
+        await apiCall('/api/spotify/recent-artists', 'POST', { artistId: artistUri });
         
         // Refresh the recent artists list
         await fetchRecentArtists();
@@ -498,7 +496,7 @@ export default function App() {
 
   const fetchKioskMode = useCallback(async () => {
     try {
-      const response = await apiCall('/api/kiosk', 'GET', undefined, true);
+      const response = await apiCall('/api/kiosk', 'GET', undefined);
       if (response && typeof response.kiosk === 'boolean') {
         setIsKioskMode(response.kiosk);
         if (response.kiosk) {
@@ -517,7 +515,7 @@ export default function App() {
 
   const fetchTheme = useCallback(async () => {
     try {
-      const response = await apiCall('/api/theme', 'GET', undefined, true);
+      const response = await apiCall('/api/theme', 'GET', undefined);
       if (response && response.theme) {
         const themeKey = response.theme;
         if (themes[themeKey]) {
@@ -532,7 +530,7 @@ export default function App() {
 
   const fetchView = useCallback(async () => {
     try {
-      const response = await apiCall('/api/view', 'GET', undefined, true);
+      const response = await apiCall('/api/view', 'GET', undefined);
       if (response && response.view) {
         setViewName(response.view);
       }
@@ -543,7 +541,7 @@ export default function App() {
 
   const fetchHotkeys = useCallback(async () => {
     try {
-      const response = await apiCall('/api/hotkeys', 'GET', undefined, true);
+      const response = await apiCall('/api/hotkeys', 'GET', undefined);
       if (response) {
         setHotkeys(response);
       }
@@ -555,14 +553,14 @@ export default function App() {
   const fetchSpotifyIds = useCallback(async () => {
     try {
       // First get the list of IDs
-      const idsResponse = await apiCall('/api/spotify/ids', 'GET', undefined, true);
+      const idsResponse = await apiCall('/api/spotify/ids', 'GET', undefined);
       if (idsResponse && idsResponse.ids) {
         const ids: string[] = idsResponse.ids;
         
         // Then fetch metadata for each ID
         const metadataPromises = ids.map(async (id: string) => {
           try {
-            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined, true);
+            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined);
             if (metadataResponse) {
               return {
                 id: metadataResponse.id || id,
@@ -588,7 +586,7 @@ export default function App() {
 
   const checkConfigVersion = useCallback(async () => {
     try {
-      const response = await apiCall('/api/config/version', 'GET', undefined, true);
+      const response = await apiCall('/api/config/version', 'GET', undefined);
       if (response && response.version) {
         const currentVersion = response.version;
         
@@ -634,7 +632,7 @@ export default function App() {
         let offset = 0;
         const limit = 50;
         while (true) {
-          const data = await apiCall(`/api/spotify/albums/${encodeURIComponent(spotifyIdValue)}/tracks?limit=${limit}&offset=${offset}`, 'GET', undefined, true);
+          const data = await apiCall(`/api/spotify/albums/${encodeURIComponent(spotifyIdValue)}/tracks?limit=${limit}&offset=${offset}`, 'GET', undefined);
           if (!data || !data.items) {
             throw new Error('Failed to fetch album tracks');
           }
@@ -651,7 +649,7 @@ export default function App() {
         let offset = 0;
         const limit = 50;
         while (true) {
-          const data = await apiCall(`/api/spotify/playlists/${encodeURIComponent(spotifyIdValue)}/tracks?limit=${limit}&offset=${offset}`, 'GET', undefined, true);
+          const data = await apiCall(`/api/spotify/playlists/${encodeURIComponent(spotifyIdValue)}/tracks?limit=${limit}&offset=${offset}`, 'GET', undefined);
           if (!data || !data.items) {
             throw new Error('Failed to fetch playlist tracks');
           }
@@ -667,7 +665,7 @@ export default function App() {
         }
       } else if (type === 'artist') {
         // Fetch artist's top tracks through server
-        const data = await apiCall(`/api/spotify/artists/${encodeURIComponent(spotifyIdValue)}/top-tracks?market=US`, 'GET', undefined, true);
+        const data = await apiCall(`/api/spotify/artists/${encodeURIComponent(spotifyIdValue)}/top-tracks?market=US`, 'GET', undefined);
         if (!data || !data.tracks) {
           throw new Error('Failed to fetch artist top tracks');
         }
@@ -736,7 +734,7 @@ export default function App() {
     
     // Persist to server in the background
     try {
-      const response = await apiCall('/api/theme', 'POST', { theme: newThemeName }, true);
+      const response = await apiCall('/api/theme', 'POST', { theme: newThemeName });
       if (!response || !response.theme) {
         console.warn('Theme update may not have been persisted:', response);
       }
