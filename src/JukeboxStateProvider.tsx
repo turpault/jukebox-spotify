@@ -424,7 +424,16 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
 
         logWebSocket('Poll error', null, error);
         setIsConnected(false);
-        setStatusMessage(`Connection error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        
+        // Provide more informative error messages
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+          setStatusMessage("Cannot connect to server. Is the server running?");
+        } else if (errorMessage.includes('404')) {
+          setStatusMessage("Server endpoint not found. Check server configuration.");
+        } else {
+          setStatusMessage(`Connection error: ${errorMessage}`);
+        }
 
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, 2000));
