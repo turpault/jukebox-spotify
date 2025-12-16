@@ -58,8 +58,8 @@ const logREST = (method: string, endpoint: string, data?: any, response?: any, e
 
 // Context interface
 export interface ConfigStateContextValue {
-  configuredSpotifyIds: SpotifyIdWithArtwork[];
-  recentArtists: SpotifyIdWithArtwork[];
+  configuredSpotifyIds: string[]; // Just IDs, not full metadata
+  recentArtists: string[]; // Just IDs, not full metadata
 }
 
 const ConfigStateContext = createContext<ConfigStateContextValue | undefined>(undefined);
@@ -69,8 +69,8 @@ interface ConfigStateProviderProps {
 }
 
 export function ConfigStateProvider({ children }: ConfigStateProviderProps) {
-  const [configuredSpotifyIds, setConfiguredSpotifyIds] = useState<SpotifyIdWithArtwork[]>([]);
-  const [recentArtists, setRecentArtists] = useState<SpotifyIdWithArtwork[]>([]);
+  const [configuredSpotifyIds, setConfiguredSpotifyIds] = useState<string[]>([]);
+  const [recentArtists, setRecentArtists] = useState<string[]>([]);
 
   const configVersionRef = useRef<string | null>(null);
   const configPollIntervalRef = useRef<number | null>(null);
@@ -111,27 +111,7 @@ export function ConfigStateProvider({ children }: ConfigStateProviderProps) {
       const idsResponse = await apiCall('/api/spotify/ids', 'GET', undefined);
       if (idsResponse && idsResponse.ids) {
         const ids: string[] = idsResponse.ids;
-
-        const metadataPromises = ids.map(async (id: string) => {
-          try {
-            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined);
-            if (metadataResponse) {
-              return {
-                id: metadataResponse.id || id,
-                name: metadataResponse.name || 'Unknown',
-                type: metadataResponse.type || 'unknown',
-                imageUrl: metadataResponse.imageUrl || '',
-              };
-            }
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          } catch (error) {
-            console.error(`Failed to fetch metadata for ${id}:`, error);
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          }
-        });
-
-        const metadata = await Promise.all(metadataPromises);
-        setConfiguredSpotifyIds(metadata);
+        setConfiguredSpotifyIds(ids);
       }
     } catch (error) {
       console.error('Failed to fetch Spotify IDs:', error);
@@ -143,27 +123,7 @@ export function ConfigStateProvider({ children }: ConfigStateProviderProps) {
       const idsResponse = await apiCall('/api/spotify/recent-artists', 'GET', undefined);
       if (idsResponse && idsResponse.ids) {
         const ids: string[] = idsResponse.ids;
-
-        const metadataPromises = ids.map(async (id: string) => {
-          try {
-            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined);
-            if (metadataResponse) {
-              return {
-                id: metadataResponse.id || id,
-                name: metadataResponse.name || 'Unknown',
-                type: metadataResponse.type || 'unknown',
-                imageUrl: metadataResponse.imageUrl || '',
-              };
-            }
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          } catch (error) {
-            console.error(`Failed to fetch metadata for ${id}:`, error);
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          }
-        });
-
-        const metadata = await Promise.all(metadataPromises);
-        setRecentArtists(metadata);
+        setRecentArtists(ids);
       }
     } catch (error) {
       console.error('Failed to fetch recent artists:', error);
