@@ -159,6 +159,8 @@ export interface JukeboxStateContextValue {
   viewName: string;
   isKioskMode: boolean;
   hotkeys: HotkeyConfig | null;
+  isThemeLoaded: boolean;
+  isConnectionStatusKnown: boolean;
 
   // Spotify data
   loadingSpotifyId: string | null;
@@ -223,6 +225,8 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
   const [viewName, setViewName] = useState<string>('default');
   const [isKioskMode, setIsKioskMode] = useState<boolean>(false);
   const [hotkeys, setHotkeys] = useState<HotkeyConfig | null>(null);
+  const [isThemeLoaded, setIsThemeLoaded] = useState<boolean>(false);
+  const [isConnectionStatusKnown, setIsConnectionStatusKnown] = useState<boolean>(false);
 
   // Spotify data
   const [loadingSpotifyId, setLoadingSpotifyId] = useState<string | null>(null);
@@ -440,8 +444,10 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
       if (response && response.theme) {
         setThemeName(response.theme);
       }
+      setIsThemeLoaded(true);
     } catch (error) {
       console.error('Failed to fetch theme:', error);
+      setIsThemeLoaded(true); // Mark as loaded even on error to prevent infinite spinner
     }
   }, [apiCall]);
 
@@ -645,9 +651,11 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
             setStatusMessage("No Spotify Connect instance connected");
           }
         }
+        setIsConnectionStatusKnown(true);
       } catch (error) {
         // Ignore errors from initial check, will be handled by polling
         console.warn('Initial connection check failed:', error);
+        setIsConnectionStatusKnown(true); // Mark as known even on error to prevent infinite spinner
       }
     };
     checkInitialConnection();
@@ -716,6 +724,8 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     viewName,
     isKioskMode,
     hotkeys,
+    isThemeLoaded,
+    isConnectionStatusKnown,
     loadingSpotifyId,
     togglePlay,
     nextTrack,

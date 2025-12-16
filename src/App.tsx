@@ -227,6 +227,8 @@ export default function App() {
     viewName,
     isKioskMode,
     hotkeys,
+    isThemeLoaded,
+    isConnectionStatusKnown,
     loadingSpotifyId,
     togglePlay,
     nextTrack,
