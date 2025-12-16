@@ -880,8 +880,6 @@ export function createSpotifyRoutes() {
           const cachePath = getImageCachePath(imageUrl);
 
           // Check if image is already cached and not expired
-          let buffer: Buffer;
-          let contentType: string;
           let fromCache = false;
 
           try {
@@ -889,17 +887,21 @@ export function createSpotifyRoutes() {
             const age = Date.now() - stats.mtimeMs;
 
             if (age < CACHE_DURATION) {
-              // Cache is valid, read from cache
-              buffer = await readFile(cachePath);
+              // Cache is valid, serve from cache using Bun.file()
               fromCache = true;
-
-              // Determine content type from file extension
-              const ext = cachePath.split('.').pop()?.toLowerCase();
-              contentType =
-                ext === 'png' ? 'image/png' :
-                  ext === 'gif' ? 'image/gif' :
-                    ext === 'webp' ? 'image/webp' :
-                      'image/jpeg';
+              const file = Bun.file(cachePath);
+              
+              traceApiEnd(traceContext, 200, {
+                contentType: file.type || 'image/jpeg',
+                size: stats.size,
+                fromCache
+              });
+              
+              return new Response(file, {
+                headers: {
+                  'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
+                },
+              });
             } else {
               // Cache expired, delete it
               await unlink(cachePath);
@@ -915,15 +917,7 @@ export function createSpotifyRoutes() {
 
             // Get the image data as array buffer
             const arrayBuffer = await response.arrayBuffer();
-            buffer = Buffer.from(arrayBuffer);
-
-            // Determine content type from response or URL
-            contentType = response.headers.get('content-type') ||
-              (imageUrl.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' :
-                imageUrl.match(/\.png$/i) ? 'image/png' :
-                  imageUrl.match(/\.gif$/i) ? 'image/gif' :
-                    imageUrl.match(/\.webp$/i) ? 'image/webp' :
-                      'image/jpeg');
+            const buffer = Buffer.from(arrayBuffer);
 
             // Cache the image to disk
             try {
@@ -932,19 +926,23 @@ export function createSpotifyRoutes() {
               console.error(`Failed to cache image for ${imageUrl}:`, error);
               // Continue even if caching fails
             }
-          }
 
-          traceApiEnd(traceContext, 200, {
-            contentType,
-            size: buffer.length,
-            fromCache
-          });
-          return new Response(new Uint8Array(buffer), {
-            headers: {
-              'Content-Type': contentType,
-              'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
-            },
-          });
+            // Serve the file using Bun.file() (Bun automatically sets MIME type from extension)
+            const file = Bun.file(cachePath);
+            const fileSize = buffer.length;
+            
+            traceApiEnd(traceContext, 200, {
+              contentType: file.type || response.headers.get('content-type') || 'image/jpeg',
+              size: fileSize,
+              fromCache: false
+            });
+            
+            return new Response(file, {
+              headers: {
+                'Cache-Control': 'public, max-age=2592000', // Cache for 30 days
+              },
+            });
+          }
         } catch (error) {
           traceApiEnd(traceContext, 500, null, error);
           return Response.json({ error: "Failed to process image" }, { status: 500 });
