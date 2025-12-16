@@ -312,7 +312,7 @@ class LibrespotStateService {
   // Start keepalive mechanism to ensure connection stays alive
   private startKeepalive(): void {
     this.stopKeepalive(); // Clear any existing interval
-    
+
     this.keepaliveInterval = setInterval(() => {
       if (!this.isConnected()) {
         console.log("Keepalive check: Connection lost, reconnecting...");

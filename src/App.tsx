@@ -263,11 +263,15 @@ export default function App() {
     toggleRepeat,
     toggleShuffle,
     setLoadingSpotifyId,
+    setStatusMessage,
+    setThemeName,
   } = useJukeboxState();
 
   // Local UI state
   const [theme, setTheme] = useState<Theme>(steampunkTheme);
   const [isMobile, setIsMobile] = useState(false);
+  const gamepadPollIntervalRef = useRef<number | null>(null);
+  const lastGamepadStateRef = useRef<boolean[]>([]);
 
   // Detect mobile screen size
   useEffect(() => {
@@ -412,14 +416,13 @@ export default function App() {
         }
       }
 
-      setStatusMessage(`Added ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue: ${itemName}`);
+      const successMessage = `Added ${tracks.length} track${tracks.length > 1 ? 's' : ''} to queue: ${itemName}`;
+      setStatusMessage(successMessage);
       setTimeout(() => {
-        setStatusMessage((prev) => {
-          if (prev.startsWith('Added')) {
-            return '';
-          }
-          return prev;
-        });
+        // Clear the message if it's still the success message
+        if (statusMessage === successMessage) {
+          setStatusMessage('');
+        }
       }, 3000);
     } catch (error) {
       console.error('Failed to add to queue:', error);
@@ -793,8 +796,7 @@ export default function App() {
                   max={playerState.duration || 0}
                   value={playerState.position}
                   onChange={(e) => {
-                    const newPosition = parseInt(e.target.value);
-                    setPlayerState(prev => ({ ...prev, position: newPosition }));
+                    // Position will be updated when seek completes
                   }}
                   onMouseUp={(e) => {
                     const target = e.target as HTMLInputElement;
@@ -915,7 +917,7 @@ export default function App() {
                     value={playerState.volume}
                     onChange={(e) => {
                       const newVolume = parseInt(e.target.value);
-                      setPlayerState(prev => ({ ...prev, volume: newVolume }));
+                      // Volume will be updated when setVolume completes
                     }}
                     onMouseUp={(e) => {
                       const target = e.target as HTMLInputElement;

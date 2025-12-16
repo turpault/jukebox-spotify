@@ -175,6 +175,8 @@ export interface JukeboxStateContextValue {
   toggleRepeat: () => Promise<void>;
   toggleShuffle: () => Promise<void>;
   setLoadingSpotifyId: (id: string | null) => void;
+  setStatusMessage: (message: string) => void;
+  setThemeName: (name: string) => void;
 }
 
 const JukeboxStateContext = React.createContext<JukeboxStateContextValue | null>(null);
@@ -642,6 +644,8 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     toggleRepeat,
     toggleShuffle,
     setLoadingSpotifyId,
+    setStatusMessage,
+    setThemeName,
   };
 
   return (
