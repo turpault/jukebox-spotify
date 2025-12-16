@@ -16,7 +16,7 @@ async function proxyToLibrespot(path: string, method: string = 'GET', body?: any
       },
       body: body ? JSON.stringify(body) : undefined,
     });
-    
+
     const data = await response.json().catch(() => null);
     traceApiEnd(traceContext, response.status, data);
     return Response.json(data, { status: response.status });
@@ -37,10 +37,10 @@ export function createLibrespotRoutes() {
           const url = new URL(req.url);
           const lastVersion = parseInt(url.searchParams.get('version') || '0', 10);
           const timeout = parseInt(url.searchParams.get('timeout') || '30000', 10);
-          
+
           // Wait for state change or timeout
           const result = await librespotStateService.pollState(lastVersion, timeout);
-          
+
           traceApiEnd(traceContext, 200);
           return Response.json({
             state: result.state,

@@ -345,6 +345,70 @@ export default function App() {
     }
   }, []);
 
+  const fetchRecentArtists = useCallback(async () => {
+    try {
+      // First get the list of IDs
+      const idsResponse = await apiCall('/api/spotify/recent-artists', 'GET', undefined, true);
+      if (idsResponse && idsResponse.ids) {
+        const ids: string[] = idsResponse.ids;
+        
+        // Then fetch metadata for each ID
+        const metadataPromises = ids.map(async (id: string) => {
+          try {
+            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined, true);
+            if (metadataResponse) {
+              return {
+                id: metadataResponse.id || id,
+                name: metadataResponse.name || 'Unknown',
+                type: metadataResponse.type || 'unknown',
+                imageUrl: metadataResponse.imageUrl || '',
+              };
+            }
+            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
+          } catch (error) {
+            console.error(`Failed to fetch metadata for ${id}:`, error);
+            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
+          }
+        });
+        
+        const metadata = await Promise.all(metadataPromises);
+        setRecentArtists(metadata);
+      }
+    } catch (error) {
+      console.error('Failed to fetch recent artists:', error);
+    }
+  }, []);
+
+  const fetchTrackArtistUri = useCallback(async (trackUri: string) => {
+    try {
+      // Parse track URI
+      const parts = trackUri.split(':');
+      if (parts.length < 3 || parts[0] !== 'spotify' || parts[1] !== 'track') {
+        return;
+      }
+      const trackId = parts[2];
+
+      // Fetch track details through server
+      const trackData = await apiCall(`/api/spotify/tracks/${encodeURIComponent(trackId)}`, 'GET', undefined, true);
+      if (!trackData) {
+        return;
+      }
+
+      if (trackData.artists && trackData.artists.length > 0) {
+        const artist = trackData.artists[0];
+        const artistUri = artist.uri;
+
+        // Add to recent artists via API (which will handle deduplication and persistence)
+        await apiCall('/api/spotify/recent-artists', 'POST', { artistId: artistUri }, true);
+        
+        // Refresh the recent artists list
+        await fetchRecentArtists();
+      }
+    } catch (error) {
+      console.error('Error fetching track artist URI:', error);
+    }
+  }, [apiCall, fetchRecentArtists]);
+
   const pollEvents = useCallback(async () => {
     while (true) {
       // Cancel any existing poll
@@ -521,70 +585,6 @@ export default function App() {
       console.error('Failed to fetch Spotify IDs:', error);
     }
   }, []);
-
-  const fetchRecentArtists = useCallback(async () => {
-    try {
-      // First get the list of IDs
-      const idsResponse = await apiCall('/api/spotify/recent-artists', 'GET', undefined, true);
-      if (idsResponse && idsResponse.ids) {
-        const ids: string[] = idsResponse.ids;
-        
-        // Then fetch metadata for each ID
-        const metadataPromises = ids.map(async (id: string) => {
-          try {
-            const metadataResponse = await apiCall(`/api/spotify/metadata/${encodeURIComponent(id)}`, 'GET', undefined, true);
-            if (metadataResponse) {
-              return {
-                id: metadataResponse.id || id,
-                name: metadataResponse.name || 'Unknown',
-                type: metadataResponse.type || 'unknown',
-                imageUrl: metadataResponse.imageUrl || '',
-              };
-            }
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          } catch (error) {
-            console.error(`Failed to fetch metadata for ${id}:`, error);
-            return { id, name: 'Unknown', type: 'unknown', imageUrl: '' };
-          }
-        });
-        
-        const metadata = await Promise.all(metadataPromises);
-        setRecentArtists(metadata);
-      }
-    } catch (error) {
-      console.error('Failed to fetch recent artists:', error);
-    }
-  }, []);
-
-  const fetchTrackArtistUri = useCallback(async (trackUri: string) => {
-    try {
-      // Parse track URI
-      const parts = trackUri.split(':');
-      if (parts.length < 3 || parts[0] !== 'spotify' || parts[1] !== 'track') {
-        return;
-      }
-      const trackId = parts[2];
-
-      // Fetch track details through server
-      const trackData = await apiCall(`/api/spotify/tracks/${encodeURIComponent(trackId)}`, 'GET', undefined, true);
-      if (!trackData) {
-        return;
-      }
-
-      if (trackData.artists && trackData.artists.length > 0) {
-        const artist = trackData.artists[0];
-        const artistUri = artist.uri;
-
-        // Add to recent artists via API (which will handle deduplication and persistence)
-        await apiCall('/api/spotify/recent-artists', 'POST', { artistId: artistUri }, true);
-        
-        // Refresh the recent artists list
-        await fetchRecentArtists();
-      }
-    } catch (error) {
-      console.error('Error fetching track artist URI:', error);
-    }
-  }, [apiCall, fetchRecentArtists]);
 
   const checkConfigVersion = useCallback(async () => {
     try {
@@ -829,8 +829,8 @@ export default function App() {
       // Disable text selection
       document.body.style.userSelect = 'none';
       document.body.style.webkitUserSelect = 'none';
-      document.body.style.mozUserSelect = 'none';
-      document.body.style.msUserSelect = 'none';
+      (document.body.style as any).mozUserSelect = 'none';
+      (document.body.style as any).msUserSelect = 'none';
       
       // Disable right-click context menu
       const handleContextMenu = (e: MouseEvent) => {
@@ -853,8 +853,8 @@ export default function App() {
       return () => {
         document.body.style.userSelect = '';
         document.body.style.webkitUserSelect = '';
-        document.body.style.mozUserSelect = '';
-        document.body.style.msUserSelect = '';
+        (document.body.style as any).mozUserSelect = '';
+        (document.body.style as any).msUserSelect = '';
         document.removeEventListener('contextmenu', handleContextMenu);
         document.removeEventListener('keydown', handleKeyDown);
       };

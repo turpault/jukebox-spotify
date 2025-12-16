@@ -26,7 +26,7 @@ serve({
     ...createSpotifyRoutes(),
     ...createLibrespotRoutes(),
     "/manage": manageHtml,
-    "/": indexHtml,    
+    "/": indexHtml,
   },
   development: true,
 });
