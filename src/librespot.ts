@@ -41,18 +41,16 @@ export function createLibrespotRoutes() {
           // Wait for state change or timeout
           const result = await librespotStateService.pollState(lastVersion, timeout);
 
-          // Check if there's an active Spotify Connect session
-          // A session is active if there's a track or if isActive is true
-          // The WebSocket must also be connected to go-librespot
-          const hasActiveSession = (result.state.currentTrack !== null && result.state.currentTrack !== undefined) ||
-            result.state.isActive === true;
+          // Connection status: true if WebSocket is connected to go-librespot
+          // This means go-librespot is running and available as a Spotify Connect device
+          // The user can connect from their Spotify app even if no session is currently active
           const wsConnected = librespotStateService.isConnected();
 
           traceApiEnd(traceContext, 200);
           return Response.json({
             state: result.state,
             version: result.version,
-            connected: wsConnected && hasActiveSession,
+            connected: wsConnected,
           });
         } catch (error) {
           traceApiEnd(traceContext, 500, null, error);
