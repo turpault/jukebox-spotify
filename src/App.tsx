@@ -33,8 +33,6 @@ interface SpotifyIdWithArtwork {
 
 // All API calls are now proxied through the server
 const LIBRESPOT_API_URL = ""; // Use relative URLs to proxy through server
-// Use relative WebSocket URL that connects to the same server
-const LIBRESPOT_WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/ws`;
 
 // Theme system
 interface Theme {
@@ -269,8 +267,8 @@ export default function App() {
   });
   const [statusMessage, setStatusMessage] = useState("Connecting to go-librespot...");
   const [isConnected, setIsConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<number | null>(null);
+  const pollAbortControllerRef = useRef<AbortController | null>(null);
+  const stateVersionRef = useRef<number>(0);
   const gamepadPollIntervalRef = useRef<number | null>(null);
   const lastGamepadStateRef = useRef<boolean[]>([]);
   const configVersionRef = useRef<string | null>(null);
@@ -347,159 +345,92 @@ export default function App() {
     }
   }, []);
 
-  const connectWebSocket = () => {
-    logWebSocket('Attempting to connect', { url: LIBRESPOT_WS_URL });
-    try {
-      const ws = new WebSocket(LIBRESPOT_WS_URL);
-      wsRef.current = ws;
+  const pollEvents = useCallback(async () => {
+    while (true) {
+      // Cancel any existing poll
+      if (pollAbortControllerRef.current) {
+        pollAbortControllerRef.current.abort();
+      }
 
-      ws.onopen = () => {
-        logWebSocket('Connection opened', { readyState: ws.readyState });
-        setIsConnected(true);
-        setStatusMessage("Connected to go-librespot");
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
-        // Fetch current playback status when WebSocket connects
-        fetchPlaybackStatus();
-      };
+      const abortController = new AbortController();
+      pollAbortControllerRef.current = abortController;
 
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          logWebSocket('Message received', message);
-          // Handle nested structure: { type: "...", data: {...} }
-          if (message.type && message.data) {
-            handleWebSocketEvent({ ...message.data, type: message.type });
-          } else {
-            // Fallback for flat structure
-            handleWebSocketEvent(message);
-          }
-        } catch (error) {
-          logWebSocket('Error parsing message', { raw: event.data }, error);
-        }
-      };
-
-      ws.onerror = (error) => {
-        logWebSocket('Connection error', null, error);
-        setStatusMessage("Connection error");
-      };
-
-      ws.onclose = (event) => {
-        logWebSocket('Connection closed', { 
-          code: event.code, 
-          reason: event.reason, 
-          wasClean: event.wasClean 
+      try {
+        const url = `/api/events?version=${stateVersionRef.current}&timeout=30000`;
+        logWebSocket('Polling for events', { version: stateVersionRef.current });
+        
+        const response = await fetch(url, {
+          signal: abortController.signal,
         });
+
+        if (!response.ok) {
+          throw new Error(`Poll failed: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        logWebSocket('Events received', result);
+
+        // Update connection status
+        setIsConnected(result.connected || false);
+        if (result.connected) {
+          setStatusMessage("Connected to go-librespot");
+        } else {
+          setStatusMessage("Reconnecting...");
+        }
+
+        // Update state version
+        if (result.version !== undefined) {
+          stateVersionRef.current = result.version;
+        }
+
+        // Update player state from result
+        if (result.state) {
+          const state = result.state;
+          setPlayerState(prev => {
+            const newState = { ...prev };
+            
+            if (state.isActive !== undefined) newState.isActive = state.isActive;
+            if (state.isPaused !== undefined) newState.isPaused = state.isPaused;
+            if (state.currentTrack !== undefined) {
+              newState.currentTrack = state.currentTrack;
+              // Extract artist URI and add to Quick Add list
+              if (state.currentTrack?.uri && state.currentTrack?.artist_names && state.currentTrack.artist_names.length > 0) {
+                // Parse track URI to get artist ID
+                const trackUriParts = state.currentTrack.uri.split(':');
+                if (trackUriParts.length >= 3 && trackUriParts[0] === 'spotify' && trackUriParts[1] === 'track') {
+                  // Fetch track details to get artist URI
+                  fetchTrackArtistUri(state.currentTrack.uri);
+                }
+              }
+            }
+            if (state.position !== undefined) newState.position = state.position;
+            if (state.duration !== undefined) newState.duration = state.duration;
+            if (state.volume !== undefined) newState.volume = state.volume;
+            if (state.volumeMax !== undefined) newState.volumeMax = state.volumeMax;
+            if (state.repeatContext !== undefined) newState.repeatContext = state.repeatContext;
+            if (state.repeatTrack !== undefined) newState.repeatTrack = state.repeatTrack;
+            if (state.shuffleContext !== undefined) newState.shuffleContext = state.shuffleContext;
+            
+            return newState;
+          });
+        }
+
+        // Continue polling (loop will continue)
+      } catch (error: any) {
+        if (abortController.signal.aborted) {
+          // Poll was cancelled, exit loop
+          return;
+        }
+        
+        logWebSocket('Poll error', null, error);
         setIsConnected(false);
         setStatusMessage("Reconnecting...");
-        // Reconnect after 2 seconds
-        reconnectTimeoutRef.current = window.setTimeout(() => {
-          logWebSocket('Attempting to reconnect');
-          connectWebSocket();
-        }, 2000);
-      };
-    } catch (error) {
-      logWebSocket('Failed to create WebSocket connection', null, error);
-      setStatusMessage("Failed to connect");
-      // Retry connection
-      reconnectTimeoutRef.current = window.setTimeout(() => {
-        logWebSocket('Retrying WebSocket connection');
-        connectWebSocket();
-      }, 2000);
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
-  };
-
-  const handleWebSocketEvent = (data: any) => {
-    logWebSocket(`Event: ${data.type}`, data);
-    switch (data.type) {
-      case 'active':
-        setPlayerState(prev => ({ ...prev, isActive: true }));
-        setStatusMessage("Player active");
-        break;
-      case 'inactive':
-        setPlayerState(prev => ({ ...prev, isActive: false }));
-        setStatusMessage("Player inactive");
-        break;
-      case 'will_play':
-        // Track is about to play - prepare UI for upcoming track
-        // Metadata will follow, so we can optionally show a loading state here
-        break;
-      case 'metadata':
-        setPlayerState(prev => ({
-          ...prev,
-          currentTrack: {
-            context_uri: data.context_uri,
-            uri: data.uri,
-            name: data.name,
-            artist_names: data.artist_names,
-            album_name: data.album_name,
-            album_cover_url: data.album_cover_url,
-            position: data.position,
-            duration: data.duration,
-          },
-          position: data.position || 0,
-          duration: data.duration || 0,
-        }));
-        // Extract artist URI and add to Quick Add list
-        if (data.uri && data.artist_names && data.artist_names.length > 0) {
-          // Parse track URI to get artist ID
-          const trackUriParts = data.uri.split(':');
-          if (trackUriParts.length >= 3 && trackUriParts[0] === 'spotify' && trackUriParts[1] === 'track') {
-            // Fetch track details to get artist URI
-            fetchTrackArtistUri(data.uri);
-          }
-        }
-        break;
-      case 'playing':
-        setPlayerState(prev => ({ ...prev, isPaused: false, isActive: true }));
-        break;
-      case 'paused':
-        setPlayerState(prev => ({ ...prev, isPaused: true }));
-        break;
-      case 'not_playing':
-        setPlayerState(prev => ({ ...prev, isPaused: true, isActive: false }));
-        break;
-      case 'stopped':
-        setPlayerState(prev => ({ ...prev, isActive: false, currentTrack: null }));
-        break;
-      case 'seek':
-        setPlayerState(prev => ({
-          ...prev,
-          position: data.position || 0,
-          duration: data.duration || 0,
-        }));
-        break;
-      case 'volume':
-        setPlayerState(prev => ({
-          ...prev,
-          volume: data.value || 0,
-          volumeMax: data.max || prev.volumeMax,
-        }));
-        break;
-      case 'repeat_context':
-        setPlayerState(prev => ({
-          ...prev,
-          repeatContext: data.value === true,
-        }));
-        break;
-      case 'repeat_track':
-        setPlayerState(prev => ({
-          ...prev,
-          repeatTrack: data.value === true,
-        }));
-        break;
-      case 'shuffle_context':
-        setPlayerState(prev => ({
-          ...prev,
-          shuffleContext: data.value === true,
-        }));
-        break;
-      default:
-        logWebSocket(`Unknown event type: ${data.type}`, data);
-    }
-  };
+  }, [fetchTrackArtistUri]);
 
   const fetchKioskMode = useCallback(async () => {
     try {
@@ -830,8 +761,8 @@ export default function App() {
     fetchRecentArtists();
     // Fetch initial playback status on page load
     fetchPlaybackStatus();
-    // Connect WebSocket for real-time updates
-    connectWebSocket();
+    // Start long polling for real-time updates
+    pollEvents();
     
     // Set up config version polling (check every 2 seconds)
     configPollIntervalRef.current = window.setInterval(() => {
@@ -844,11 +775,9 @@ export default function App() {
     });
     
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
+      if (pollAbortControllerRef.current) {
+        pollAbortControllerRef.current.abort();
+        pollAbortControllerRef.current = null;
       }
       if (gamepadPollIntervalRef.current) {
         clearInterval(gamepadPollIntervalRef.current);
@@ -857,7 +786,7 @@ export default function App() {
         clearInterval(configPollIntervalRef.current);
       }
     };
-  }, [fetchPlaybackStatus, fetchTheme, fetchView, fetchKioskMode, fetchHotkeys, fetchSpotifyIds, fetchRecentArtists, checkConfigVersion]);
+  }, [fetchPlaybackStatus, fetchTheme, fetchView, fetchKioskMode, fetchHotkeys, fetchSpotifyIds, fetchRecentArtists, checkConfigVersion, pollEvents]);
 
   // Update position during playback
   useEffect(() => {
