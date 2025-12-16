@@ -706,7 +706,7 @@ export default function App() {
             }}>
               To use this jukebox, you need to connect a Spotify Connect device from the Spotify app.
             </p>
-            
+
             <div style={{
               marginTop: '30px',
             }}>
@@ -720,7 +720,7 @@ export default function App() {
               }}>
                 How to Connect:
               </h3>
-              
+
               <ol style={{
                 color: theme.colors.text,
                 fontSize: isMobile ? '0.9rem' : '1rem',
@@ -744,25 +744,6 @@ export default function App() {
                   <strong>Your music will start playing</strong> through the jukebox, and you'll see it appear here!
                 </li>
               </ol>
-              
-              <div style={{
-                marginTop: '30px',
-                padding: '20px',
-                background: `linear-gradient(135deg, ${theme.colors.surface} 0%, ${theme.colors.border} 100%)`,
-                borderRadius: theme.effects.borderRadius,
-                border: `1px solid ${theme.colors.border}`,
-              }}>
-                <p style={{
-                  color: theme.colors.text,
-                  fontSize: isMobile ? '0.85rem' : '0.95rem',
-                  margin: 0,
-                  fontStyle: 'italic',
-                  textAlign: 'center',
-                }}>
-                  💡 <strong>Tip:</strong> Make sure go-librespot is running and visible as a Spotify Connect device. 
-                  The device name will appear in your Spotify app's device list.
-                </p>
-              </div>
             </div>
           </div>
         </div>
