@@ -186,17 +186,17 @@ class LibrespotStateService {
           album_name: eventData.album_name,
           album_cover_url: eventData.album_cover_url,
         };
-        this.currentState.position = eventData.position || 0;
-        this.currentState.duration = eventData.duration || 0;
+        // Only set duration from metadata, not position (position is only updated on seek)
+        if (eventData.duration !== undefined) {
+          this.currentState.duration = eventData.duration;
+        }
         this.notifyStateChange();
         break;
       case "playing":
         this.currentState.isPaused = false;
         this.currentState.isActive = true;
-        // Update position if provided, otherwise preserve existing position
-        if (eventData.position !== undefined) {
-          this.currentState.position = eventData.position;
-        }
+        // Don't update position during playback - only on seek events
+        // Duration can be updated if provided
         if (eventData.duration !== undefined) {
           this.currentState.duration = eventData.duration;
         }
@@ -204,15 +204,8 @@ class LibrespotStateService {
         break;
       case "paused":
         this.currentState.isPaused = true;
-        // Update position if provided and non-zero, or if we don't have a position yet
-        // This prevents resetting to 0 when pausing if go-librespot sends position: 0
-        if (eventData.position !== undefined) {
-          // Only update if it's a valid non-zero position, or if we don't have a position yet
-          if (eventData.position > 0 || this.currentState.position === undefined || this.currentState.position === 0) {
-            this.currentState.position = eventData.position;
-          }
-          // Otherwise preserve existing position
-        }
+        // Don't update position when pausing - only on seek events
+        // Duration can be updated if provided
         if (eventData.duration !== undefined) {
           this.currentState.duration = eventData.duration;
         }
@@ -226,11 +219,19 @@ class LibrespotStateService {
       case "stopped":
         this.currentState.isActive = false;
         this.currentState.currentTrack = null;
+        // Clear position when stopped to avoid stale values
+        delete this.currentState.position;
+        delete this.currentState.duration;
         this.notifyStateChange();
         break;
       case "seek":
-        this.currentState.position = eventData.position || 0;
-        this.currentState.duration = eventData.duration || 0;
+        // Only update position on seek events (when user seeks or position changes)
+        if (eventData.position !== undefined) {
+          this.currentState.position = eventData.position;
+        }
+        if (eventData.duration !== undefined) {
+          this.currentState.duration = eventData.duration;
+        }
         this.notifyStateChange();
         break;
       case "volume":
@@ -258,9 +259,21 @@ class LibrespotStateService {
     // Resolve all pending pollers
     const pollers = Array.from(this.pendingPollers);
     this.pendingPollers.clear();
+    
+    // Only include position in state if it's been set (from seek event)
+    // Don't send stale position values
+    const stateToSend: PlayerState = { ...this.currentState };
+    // Only include position if it's actually been set (not undefined)
+    if (stateToSend.position === undefined) {
+      delete stateToSend.position;
+    }
+    if (stateToSend.duration === undefined) {
+      delete stateToSend.duration;
+    }
+    
     for (const poller of pollers) {
       poller.resolve({
-        state: { ...this.currentState },
+        state: stateToSend,
         version: this.stateVersion,
       });
     }
@@ -268,8 +281,16 @@ class LibrespotStateService {
 
   // Get current state (immediate)
   getState(): { state: PlayerState; version: number } {
+    // Only include position if it's been set (from seek event)
+    const stateToSend: PlayerState = { ...this.currentState };
+    if (stateToSend.position === undefined) {
+      delete stateToSend.position;
+    }
+    if (stateToSend.duration === undefined) {
+      delete stateToSend.duration;
+    }
     return {
-      state: { ...this.currentState },
+      state: stateToSend,
       version: this.stateVersion,
     };
   }
