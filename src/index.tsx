@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { JukeboxStateProvider } from './JukeboxStateProvider';
 import { ConfigStateProvider } from './ConfigStateProvider';
+import { ErrorBoundary } from './ErrorBoundary';
 
 // Detect iOS 9
 function isIOS9(): boolean {
@@ -13,6 +14,7 @@ function isIOS9(): boolean {
 
 // Helper function to send console data to server
 function sendToServer(level: string, args: any[]) {
+  const error = new Error();
   try {
     // Convert arguments to a format that can be serialized
     const data = args.map(arg => {
@@ -25,6 +27,7 @@ function sendToServer(level: string, args: any[]) {
       }
       return arg;
     });
+    data.push(error.stack);
 
     fetch('/api/console', {
       method: 'POST',
@@ -133,9 +136,11 @@ if (rootElement) {
   // For iOS 9 compatibility, this will be transpiled to ES5
   const root = createRoot(rootElement);
   root.render(
-    React.createElement(ConfigStateProvider, null,
-      React.createElement(JukeboxStateProvider, null,
-        React.createElement(App)
+    React.createElement(ErrorBoundary, null,
+      React.createElement(ConfigStateProvider, null,
+        React.createElement(JukeboxStateProvider, null,
+          React.createElement(App)
+        )
       )
     )
   );
