@@ -508,12 +508,27 @@ export default function App() {
     };
   }, [hotkeys, playerState.volume, playerState.volumeMax]);
 
+  // iOS 9 compatible padStart replacement
+  const padStart = (str: string, targetLength: number, padString: string): string => {
+    const strValue = String(str);
+    if (strValue.length >= targetLength) {
+      return strValue;
+    }
+    const pad = padString || ' ';
+    const padLength = targetLength - strValue.length;
+    let padded = '';
+    for (let i = 0; i < padLength; i++) {
+      padded += pad;
+    }
+    return padded + strValue;
+  };
+
   const formatTime = (ms: number): string => {
     if (!ms || isNaN(ms)) return '0:00';
     const totalSeconds = Math.floor(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    return minutes + ':' + padStart(String(seconds), 2, '0');
   };
 
   // Detect mobile screen size
