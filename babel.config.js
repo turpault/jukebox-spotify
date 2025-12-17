@@ -1,5 +1,9 @@
 // Babel configuration for iOS 9 compatibility
 module.exports = {
+  // Disable minification and keep code readable
+  compact: false,
+  minified: false,
+  retainLines: true,
   presets: [
     [
       '@babel/preset-env',
@@ -11,7 +15,7 @@ module.exports = {
         },
         useBuiltIns: false, // Don't auto-inject polyfills (we'll include core-js manually in HTML)
         modules: false, // Keep modules as-is since we're bundling with Bun first
-        debug: false,
+        debug: true,
         forceAllTransforms: true, // Force all transforms for maximum compatibility
         // Explicitly disable features that iOS 9 doesn't support
         exclude: [],

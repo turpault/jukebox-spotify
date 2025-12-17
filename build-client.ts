@@ -37,8 +37,10 @@ async function buildClient() {
   console.log("Step 2: Transpiling to ES5 with Babel for iOS 9...");
   try {
     // Use bunx to run babel (works better with Bun)
+    // --compact=false ensures readable output (not minified)
+    // --retain-lines helps with debugging
     const { stdout, stderr } = await exec(
-      `bunx babel ./public/dist/index.js --out-file ./public/dist/index.js --config-file ./babel.config.js --source-maps inline`
+      `bunx babel ./public/dist/index.js --out-file ./public/dist/index.js --config-file ./babel.config.js --source-maps inline --compact=false --retain-lines`
     );
     if (stderr && !stderr.includes('warning')) {
       console.warn("Babel warnings:", stderr);
