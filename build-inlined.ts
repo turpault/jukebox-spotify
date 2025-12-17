@@ -58,6 +58,54 @@ async function buildInlined() {
         return to;
       };
     }
+    // Polyfill for String.includes
+    if (!String.prototype.includes) {
+      String.prototype.includes = function(search, start) {
+        'use strict';
+        if (typeof start !== 'number') {
+          start = 0;
+        }
+        if (start + search.length > this.length) {
+          return false;
+        } else {
+          return this.indexOf(search, start) !== -1;
+        }
+      };
+    }
+    // Polyfill for String.startsWith
+    if (!String.prototype.startsWith) {
+      String.prototype.startsWith = function(searchString, position) {
+        position = position || 0;
+        return this.substr(position, searchString.length) === searchString;
+      };
+    }
+    // Polyfill for String.endsWith
+    if (!String.prototype.endsWith) {
+      String.prototype.endsWith = function(searchString, length) {
+        if (length === undefined || length > this.length) {
+          length = this.length;
+        }
+        return this.substring(length - searchString.length, length) === searchString;
+      };
+    }
+    // Polyfill for Array.from
+    if (!Array.from) {
+      Array.from = function(arrayLike) {
+        return Array.prototype.slice.call(arrayLike);
+      };
+    }
+    // Polyfill for Object.entries
+    if (!Object.entries) {
+      Object.entries = function(obj) {
+        var ownProps = Object.keys(obj);
+        var i = ownProps.length;
+        var resArray = new Array(i);
+        while (i--) {
+          resArray[i] = [ownProps[i], obj[ownProps[i]]];
+        }
+        return resArray;
+      };
+    }
   </script>
 `;
 
