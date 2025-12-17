@@ -287,8 +287,8 @@ class LibrespotStateService {
     lastVersion: number,
     timeout: number = 30000
   ): Promise<{ state: PlayerState; version: number }> {
-    // If state has changed since lastVersion, return immediately
-    if (this.stateVersion > lastVersion) {
+    // Return immediately if this is the first call (lastVersion === 0) or state has changed
+    if (lastVersion === 0 || this.stateVersion > lastVersion) {
       return {
         state: { ...this.currentState },
         version: this.stateVersion,
