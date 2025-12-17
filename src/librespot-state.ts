@@ -125,8 +125,6 @@ class LibrespotStateService {
           wasClean: event.wasClean,
         });
         console.log("Disconnected from go-librespot WebSocket, will reconnect...");
-        this.stopKeepalive();
-        this.stopPositionIncrement();
 
         // Try to reconnect
         const delay = Math.min(
@@ -271,9 +269,6 @@ class LibrespotStateService {
         version: this.stateVersion,
       });
     }
-    if (this.currentState.position === undefined) {
-      delete this.currentState.position;
-    }
   }
 
   // Get current state (immediate)
@@ -281,9 +276,6 @@ class LibrespotStateService {
     // Only include position if it's been set (from seek event)
     // Duration is track info and should always be included if set
     const stateToSend: PlayerState = { ...this.currentState };
-    if (stateToSend.position === undefined) {
-      delete stateToSend.position;
-    }
     return {
       state: stateToSend,
       version: this.stateVersion,
@@ -342,8 +334,6 @@ class LibrespotStateService {
 
   // Start keepalive mechanism to ensure connection stays alive
   private startKeepalive(): void {
-    this.stopKeepalive(); // Clear any existing interval
-
     this.keepaliveInterval = setInterval(() => {
       if (!this.isConnected()) {
         console.log("Keepalive check: Connection lost, reconnecting...");
@@ -352,13 +342,6 @@ class LibrespotStateService {
     }, this.keepaliveIntervalMs);
   }
 
-  // Stop keepalive mechanism
-  private stopKeepalive(): void {
-    if (this.keepaliveInterval) {
-      clearInterval(this.keepaliveInterval);
-      this.keepaliveInterval = null;
-    }
-  }
 
   // Start position increment interval (runs continuously, checks playback state internally)
   private startPositionIncrement(): void {
@@ -380,14 +363,6 @@ class LibrespotStateService {
       }
       // If not playing, simply don't increment (timer keeps running)
     }, this.positionIntervalMs);
-  }
-
-  // Stop position increment interval
-  private stopPositionIncrement(): void {
-    if (this.positionInterval) {
-      clearInterval(this.positionInterval);
-      this.positionInterval = null;
-    }
   }
 
   // Query initial state from go-librespot REST API
