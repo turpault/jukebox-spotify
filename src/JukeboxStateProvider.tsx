@@ -17,7 +17,6 @@ export interface PlayerState {
   isActive: boolean;
   currentTrack: TrackMetadata | null;
   position: number;
-  duration: number;
   volume: number;
   volumeMax: number;
   repeatContext: boolean;
@@ -205,7 +204,6 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     isActive: false,
     currentTrack: null,
     position: 0,
-    duration: 0,
     volume: 50,
     volumeMax: 100,
     repeatContext: false,
@@ -392,7 +390,6 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
               newState.currentTrack = state.currentTrack;
             }
             if (state.position !== undefined) newState.position = state.position;
-            if (state.duration !== undefined) newState.duration = state.duration;
             if (state.volume !== undefined) newState.volume = state.volume;
             if (state.volumeMax !== undefined) newState.volumeMax = state.volumeMax;
             if (state.repeatContext !== undefined) newState.repeatContext = state.repeatContext;
@@ -754,12 +751,14 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
 
   // Update position during playback
   useEffect(() => {
-    if (!playerState.isPaused && playerState.isActive && playerState.duration > 0) {
+    const duration = playerState.currentTrack?.duration || 0;
+    if (!playerState.isPaused && playerState.isActive && duration > 0) {
       const interval = setInterval(() => {
         setPlayerState(prev => {
+          const prevDuration = prev.currentTrack?.duration || 0;
           const newPosition = prev.position + 1000;
-          if (newPosition >= prev.duration) {
-            return { ...prev, position: prev.duration };
+          if (newPosition >= prevDuration) {
+            return { ...prev, position: prevDuration };
           }
           return { ...prev, position: newPosition };
         });
@@ -767,7 +766,7 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
 
       return () => clearInterval(interval);
     }
-  }, [playerState.isPaused, playerState.isActive, playerState.duration]);
+  }, [playerState.isPaused, playerState.isActive, playerState.currentTrack?.duration]);
 
   // Fetch artist URI when track changes
   useEffect(() => {

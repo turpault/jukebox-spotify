@@ -19,7 +19,6 @@ interface PlayerState {
   isActive: boolean;
   currentTrack: TrackMetadata | null;
   position: number;
-  duration: number;
   volume: number;
   volumeMax: number;
   repeatContext: boolean;
@@ -398,7 +397,8 @@ export default function App() {
   };
 
   const adjustSeek = async (delta: number) => {
-    const newPosition = Math.max(0, Math.min(playerState.duration, playerState.position + delta));
+    const duration = playerState.currentTrack?.duration || 0;
+    const newPosition = Math.max(0, Math.min(duration, playerState.position + delta));
     await seek(newPosition);
   };
 
@@ -449,7 +449,7 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [hotkeys, playerState.volume, playerState.volumeMax, playerState.position, playerState.duration]);
+  }, [hotkeys, playerState.volume, playerState.volumeMax, playerState.position, playerState.currentTrack?.duration]);
 
   // Gamepad hotkey handler
   useEffect(() => {
@@ -777,7 +777,7 @@ export default function App() {
                 <input
                   type="range"
                   min={0}
-                  max={playerState.duration || 0}
+                  max={playerState.currentTrack?.duration || 0}
                   value={playerState.position}
                   onChange={(e) => {
                     // Position will be updated when seek completes
@@ -792,7 +792,7 @@ export default function App() {
                   }}
                   style={styles.progressBar}
                 />
-                <span style={styles.timeLabel}>{formatTime(playerState.duration)}</span>
+                <span style={styles.timeLabel}>{formatTime(playerState.currentTrack?.duration || 0)}</span>
               </div>
 
               {/* Main playback controls - hidden in dash view */}

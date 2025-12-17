@@ -14,9 +14,9 @@ interface PlayerState {
     artist_names?: string[];
     album_name?: string;
     album_cover_url?: string;
+    duration?: number;
   } | null;
   position?: number;
-  duration?: number;
   volume?: number;
   volumeMax?: number;
   repeatContext?: boolean;
@@ -185,11 +185,9 @@ class LibrespotStateService {
           artist_names: eventData.artist_names,
           album_name: eventData.album_name,
           album_cover_url: eventData.album_cover_url,
+          duration: eventData.duration,
         };
         // Only set duration from metadata, not position (position is only updated on seek)
-        if (eventData.duration !== undefined) {
-          this.currentState.duration = eventData.duration;
-        }
         this.notifyStateChange();
         break;
       case "playing":
@@ -197,8 +195,8 @@ class LibrespotStateService {
         this.currentState.isActive = true;
         // Don't update position during playback - only on seek events
         // Duration can be updated if provided
-        if (eventData.duration !== undefined) {
-          this.currentState.duration = eventData.duration;
+        if (eventData.duration !== undefined && this.currentState.currentTrack) {
+          this.currentState.currentTrack.duration = eventData.duration;
         }
         this.notifyStateChange();
         break;
@@ -206,8 +204,8 @@ class LibrespotStateService {
         this.currentState.isPaused = true;
         // Don't update position when pausing - only on seek events
         // Duration can be updated if provided
-        if (eventData.duration !== undefined) {
-          this.currentState.duration = eventData.duration;
+        if (eventData.duration !== undefined && this.currentState.currentTrack) {
+          this.currentState.currentTrack.duration = eventData.duration;
         }
         this.notifyStateChange();
         break;
@@ -229,8 +227,9 @@ class LibrespotStateService {
         if (eventData.position !== undefined) {
           this.currentState.position = eventData.position;
         }
-        if (eventData.duration !== undefined) {
-          this.currentState.duration = eventData.duration;
+        // Duration can be updated if provided
+        if (eventData.duration !== undefined && this.currentState.currentTrack) {
+          this.currentState.currentTrack.duration = eventData.duration;
         }
         this.notifyStateChange();
         break;
@@ -259,7 +258,7 @@ class LibrespotStateService {
     // Resolve all pending pollers
     const pollers = Array.from(this.pendingPollers);
     this.pendingPollers.clear();
-    
+
     // Only include position in state if it's been set (from seek event)
     // Don't send stale position values
     // Duration is track info and should always be included if set
@@ -268,7 +267,7 @@ class LibrespotStateService {
     if (stateToSend.position === undefined) {
       delete stateToSend.position;
     }
-    
+
     for (const poller of pollers) {
       poller.resolve({
         state: stateToSend,
