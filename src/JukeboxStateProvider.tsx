@@ -243,6 +243,8 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
   const stateVersionRef = useRef<number>(0);
   const gamepadPollIntervalRef = useRef<number | null>(null);
   const lastGamepadStateRef = useRef<boolean[]>([]);
+  const configVersionRef = useRef<string | null>(null);
+  const configPollIntervalRef = useRef<number | null>(null);
 
   const apiCall = useCallback(async (endpoint: string, method: string = 'GET', body?: any) => {
     const url = endpoint;
@@ -497,6 +499,36 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     }
   }, [apiCall]);
 
+  // Check config version and refresh config items if changed
+  const checkConfigVersion = useCallback(async () => {
+    try {
+      const response = await apiCall('/api/config/version', 'GET', undefined);
+      if (response && response.version) {
+        const currentVersion = response.version;
+
+        // If we have a previous version and it changed, refresh config items
+        if (configVersionRef.current !== null && configVersionRef.current !== currentVersion) {
+          console.log('Configuration changed, refreshing theme, view, hotkeys, and kiosk mode...');
+          // Refresh all config items
+          await fetchTheme();
+          await fetchView();
+          await fetchHotkeys();
+          await fetchKioskMode();
+        }
+
+        // Set initial version if not set
+        if (configVersionRef.current === null) {
+          configVersionRef.current = currentVersion;
+        } else if (configVersionRef.current !== currentVersion) {
+          // Update version after refresh
+          configVersionRef.current = currentVersion;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check config version:', error);
+    }
+  }, [apiCall, fetchTheme, fetchView, fetchHotkeys, fetchKioskMode]);
+
 
   // Player actions
   const togglePlay = useCallback(async () => {
@@ -701,14 +733,24 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
     };
     startPolling();
 
+    // Start polling config version for changes
+    checkConfigVersion();
+    configPollIntervalRef.current = window.setInterval(() => {
+      checkConfigVersion();
+    }, 5000);
+
     return () => {
       // Set abort flag to stop polling
       pollAbortedRef.current = true;
       if (gamepadPollIntervalRef.current) {
         clearInterval(gamepadPollIntervalRef.current);
       }
+      if (configPollIntervalRef.current) {
+        clearInterval(configPollIntervalRef.current);
+        configPollIntervalRef.current = null;
+      }
     };
-  }, [fetchPlaybackStatus, fetchTheme, fetchView, fetchKioskMode, fetchHotkeys, pollEvents]);
+  }, [fetchPlaybackStatus, fetchTheme, fetchView, fetchKioskMode, fetchHotkeys, pollEvents, checkConfigVersion]);
 
   // Update position during playback
   useEffect(() => {
