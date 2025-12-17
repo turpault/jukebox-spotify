@@ -358,14 +358,14 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
         if (pollAbortedRef.current) {
           return;
         }
-        
+
         const result = await response.json();
-        
+
         // Check if poll was aborted after JSON parsing
         if (pollAbortedRef.current) {
           return;
         }
-        
+
         logPlayerEvent('Events received', result);
         // Update connection status based on server response
         // Long polling timeouts are normal and don't indicate disconnection
