@@ -354,7 +354,18 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
         if (!response.ok) {
           throw new Error(`Poll failed: ${response.status} ${response.statusText}`);
         }
+        // Check if poll was aborted before parsing JSON
+        if (pollAbortedRef.current) {
+          return;
+        }
+        
         const result = await response.json();
+        
+        // Check if poll was aborted after JSON parsing
+        if (pollAbortedRef.current) {
+          return;
+        }
+        
         logPlayerEvent('Events received', result);
         // Update connection status based on server response
         // Long polling timeouts are normal and don't indicate disconnection
@@ -406,6 +417,11 @@ export function JukeboxStateProvider({ children }: JukeboxStateProviderProps) {
           errorMessage.includes('NetworkError') ||
           errorMessage.includes('404') ||
           (error instanceof TypeError && errorMessage.includes('fetch'));
+
+        // Check again if poll was aborted before setting state
+        if (pollAbortedRef.current) {
+          return;
+        }
 
         if (isConnectionError) {
           // Only set disconnected for actual connection failures
