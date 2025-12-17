@@ -193,10 +193,29 @@ class LibrespotStateService {
       case "playing":
         this.currentState.isPaused = false;
         this.currentState.isActive = true;
+        // Update position if provided, otherwise preserve existing position
+        if (eventData.position !== undefined) {
+          this.currentState.position = eventData.position;
+        }
+        if (eventData.duration !== undefined) {
+          this.currentState.duration = eventData.duration;
+        }
         this.notifyStateChange();
         break;
       case "paused":
         this.currentState.isPaused = true;
+        // Update position if provided and non-zero, or if we don't have a position yet
+        // This prevents resetting to 0 when pausing if go-librespot sends position: 0
+        if (eventData.position !== undefined) {
+          // Only update if it's a valid non-zero position, or if we don't have a position yet
+          if (eventData.position > 0 || this.currentState.position === undefined || this.currentState.position === 0) {
+            this.currentState.position = eventData.position;
+          }
+          // Otherwise preserve existing position
+        }
+        if (eventData.duration !== undefined) {
+          this.currentState.duration = eventData.duration;
+        }
         this.notifyStateChange();
         break;
       case "not_playing":
