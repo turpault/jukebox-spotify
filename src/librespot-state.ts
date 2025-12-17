@@ -2,6 +2,8 @@ import { traceWebSocket, traceWebSocketConnection } from "./tracing";
 
 // go-librespot WebSocket URL
 const LIBRESPOT_WS_URL = "ws://localhost:3678/events";
+// go-librespot REST API URL
+const LIBRESPOT_API_URL = "http://localhost:3678";
 
 // Current state from go-librespot
 interface PlayerState {
@@ -43,6 +45,8 @@ class LibrespotStateService {
   constructor() {
     this.connect();
     this.startKeepalive();
+    // Query initial state from REST API
+    this.queryInitialState();
   }
 
   private connect() {
@@ -187,51 +191,39 @@ class LibrespotStateService {
           album_cover_url: eventData.album_cover_url,
           duration: eventData.duration,
         };
-        // Only set duration from metadata, not position (position is only updated on seek)
+        this.notifyStateChange();
+        break;
+      case "will_play":
+        this.currentState.position = 0;
         this.notifyStateChange();
         break;
       case "playing":
         this.currentState.isPaused = false;
         this.currentState.isActive = true;
-        // Don't update position during playback - only on seek events
-        // Duration can be updated if provided
-        if (eventData.duration !== undefined && this.currentState.currentTrack) {
-          this.currentState.currentTrack.duration = eventData.duration;
-        }
         this.notifyStateChange();
         break;
       case "paused":
         this.currentState.isPaused = true;
-        // Don't update position when pausing - only on seek events
-        // Duration can be updated if provided
-        if (eventData.duration !== undefined && this.currentState.currentTrack) {
-          this.currentState.currentTrack.duration = eventData.duration;
-        }
         this.notifyStateChange();
         break;
       case "not_playing":
         this.currentState.isPaused = true;
         this.currentState.isActive = false;
+        this.currentState.position = 0;
         this.notifyStateChange();
         break;
       case "stopped":
         this.currentState.isActive = false;
         this.currentState.currentTrack = null;
-        // Clear position when stopped to avoid stale values
-        // Duration is track info and should be preserved
-        delete this.currentState.position;
+        this.currentState.position = 0;
         this.notifyStateChange();
         break;
       case "seek":
         // Only update position on seek events (when user seeks or position changes)
         if (eventData.position !== undefined) {
           this.currentState.position = eventData.position;
+          this.notifyStateChange();
         }
-        // Duration can be updated if provided
-        if (eventData.duration !== undefined && this.currentState.currentTrack) {
-          this.currentState.currentTrack.duration = eventData.duration;
-        }
-        this.notifyStateChange();
         break;
       case "volume":
         this.currentState.volume = eventData.value || 0;
@@ -261,18 +253,16 @@ class LibrespotStateService {
 
     // Only include position in state if it's been set (from seek event)
     // Don't send stale position values
-    // Duration is track info and should always be included if set
     const stateToSend: PlayerState = { ...this.currentState };
-    // Only include position if it's actually been set (not undefined)
-    if (stateToSend.position === undefined) {
-      delete stateToSend.position;
-    }
 
     for (const poller of pollers) {
       poller.resolve({
         state: stateToSend,
         version: this.stateVersion,
       });
+    }
+    if (this.currentState.position === undefined) {
+      delete this.currentState.position;
     }
   }
 
@@ -357,6 +347,65 @@ class LibrespotStateService {
     if (this.keepaliveInterval) {
       clearInterval(this.keepaliveInterval);
       this.keepaliveInterval = null;
+    }
+  }
+
+  // Query initial state from go-librespot REST API
+  private async queryInitialState(): Promise<void> {
+    try {
+      const response = await fetch(`${LIBRESPOT_API_URL}/status`);
+      if (!response.ok) {
+        console.log("Failed to fetch initial state from go-librespot:", response.status);
+        return;
+      }
+
+      const status = await response.json();
+      
+      // Map REST API response to PlayerState format
+      if (status.track) {
+        this.currentState.currentTrack = {
+          context_uri: status.track.context_uri,
+          uri: status.track.uri,
+          name: status.track.name,
+          artist_names: status.track.artist_names || [],
+          album_name: status.track.album_name,
+          album_cover_url: status.track.album_cover_url,
+          duration: status.track.duration,
+        };
+      } else {
+        this.currentState.currentTrack = null;
+      }
+
+      this.currentState.isPaused = status.paused === true;
+      this.currentState.isActive = !status.stopped && status.track !== null && status.track !== undefined;
+      
+      // Only set position if it's provided and non-zero (from seek event)
+      if (status.position !== undefined && status.position > 0) {
+        this.currentState.position = status.position;
+      }
+
+      if (status.volume !== undefined) {
+        this.currentState.volume = status.volume;
+      }
+      if (status.volume_steps !== undefined) {
+        this.currentState.volumeMax = status.volume_steps;
+      }
+      if (status.repeat_context !== undefined) {
+        this.currentState.repeatContext = status.repeat_context === true;
+      }
+      if (status.repeat_track !== undefined) {
+        this.currentState.repeatTrack = status.repeat_track === true;
+      }
+      if (status.shuffle_context !== undefined) {
+        this.currentState.shuffleContext = status.shuffle_context === true;
+      }
+
+      // Notify state change to update any waiting pollers
+      this.notifyStateChange();
+      console.log("Initial state loaded from go-librespot REST API");
+    } catch (error) {
+      console.log("Failed to query initial state from go-librespot:", error);
+      // Don't throw - this is best effort, WebSocket will provide updates
     }
   }
 }
