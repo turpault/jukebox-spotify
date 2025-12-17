@@ -220,8 +220,8 @@ class LibrespotStateService {
         this.currentState.isActive = false;
         this.currentState.currentTrack = null;
         // Clear position when stopped to avoid stale values
+        // Duration is track info and should be preserved
         delete this.currentState.position;
-        delete this.currentState.duration;
         this.notifyStateChange();
         break;
       case "seek":
@@ -262,13 +262,11 @@ class LibrespotStateService {
     
     // Only include position in state if it's been set (from seek event)
     // Don't send stale position values
+    // Duration is track info and should always be included if set
     const stateToSend: PlayerState = { ...this.currentState };
     // Only include position if it's actually been set (not undefined)
     if (stateToSend.position === undefined) {
       delete stateToSend.position;
-    }
-    if (stateToSend.duration === undefined) {
-      delete stateToSend.duration;
     }
     
     for (const poller of pollers) {
@@ -282,12 +280,10 @@ class LibrespotStateService {
   // Get current state (immediate)
   getState(): { state: PlayerState; version: number } {
     // Only include position if it's been set (from seek event)
+    // Duration is track info and should always be included if set
     const stateToSend: PlayerState = { ...this.currentState };
     if (stateToSend.position === undefined) {
       delete stateToSend.position;
-    }
-    if (stateToSend.duration === undefined) {
-      delete stateToSend.duration;
     }
     return {
       state: stateToSend,
