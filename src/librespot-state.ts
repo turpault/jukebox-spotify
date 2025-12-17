@@ -14,8 +14,6 @@ interface PlayerState {
     artist_names?: string[];
     album_name?: string;
     album_cover_url?: string;
-    position?: number;
-    duration?: number;
   } | null;
   position?: number;
   duration?: number;
@@ -187,8 +185,6 @@ class LibrespotStateService {
           artist_names: eventData.artist_names,
           album_name: eventData.album_name,
           album_cover_url: eventData.album_cover_url,
-          position: eventData.position,
-          duration: eventData.duration,
         };
         this.currentState.position = eventData.position || 0;
         this.currentState.duration = eventData.duration || 0;
