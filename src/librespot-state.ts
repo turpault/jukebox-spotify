@@ -31,6 +31,7 @@ class LibrespotStateService {
   private librespotWs: WebSocket | null = null;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
+  private positionInterval: ReturnType<typeof setInterval> | null = null;
   private reconnectAttempts: number = 0;
   private currentState: PlayerState = {};
   private stateVersion: number = 0; // Increment on each state change
@@ -41,10 +42,13 @@ class LibrespotStateService {
   private maxReconnectDelay: number = 30000; // 30 seconds max delay
   private initialReconnectDelay: number = 1000; // Start with 1 second
   private keepaliveIntervalMs: number = 30000; // Check connection every 30 seconds
+  private positionIntervalMs: number = 100; // Increment position every 100ms
 
   constructor() {
     this.connect();
     this.startKeepalive();
+    // Start position increment interval (runs continuously, checks state internally)
+    this.startPositionIncrement();
     // Query initial state from REST API
     this.queryInitialState();
   }
@@ -89,7 +93,6 @@ class LibrespotStateService {
         });
         console.log("Connected to go-librespot WebSocket");
         this.reconnectAttempts = 0; // Reset on successful connection
-        this.startKeepalive(); // Ensure keepalive is running
       };
 
       // Handle messages from go-librespot
@@ -123,6 +126,7 @@ class LibrespotStateService {
         });
         console.log("Disconnected from go-librespot WebSocket, will reconnect...");
         this.stopKeepalive();
+        this.stopPositionIncrement();
 
         // Try to reconnect
         const delay = Math.min(
@@ -200,6 +204,10 @@ class LibrespotStateService {
       case "playing":
         this.currentState.isPaused = false;
         this.currentState.isActive = true;
+        // Ensure position is initialized
+        if (this.currentState.position === undefined) {
+          this.currentState.position = 0;
+        }
         this.notifyStateChange();
         break;
       case "paused":
@@ -222,6 +230,8 @@ class LibrespotStateService {
         // Only update position on seek events (when user seeks or position changes)
         if (eventData.position !== undefined) {
           this.currentState.position = eventData.position;
+          // If currently playing, the interval will continue incrementing from the new position
+          // If paused/stopped, position is set but interval won't run
           this.notifyStateChange();
         }
         break;
@@ -350,6 +360,36 @@ class LibrespotStateService {
     }
   }
 
+  // Start position increment interval (runs continuously, checks playback state internally)
+  private startPositionIncrement(): void {
+    // Only start if not already running
+    if (this.positionInterval !== null) {
+      return;
+    }
+
+    this.positionInterval = setInterval(() => {
+      // Only increment if currently playing (not paused and active)
+      if (
+        this.currentState.isPaused === false &&
+        this.currentState.isActive === true &&
+        this.currentState.position !== undefined
+      ) {
+        this.currentState.position = this.currentState.position + this.positionIntervalMs;
+        // Notify state change to update any waiting pollers
+        this.notifyStateChange();
+      }
+      // If not playing, simply don't increment (timer keeps running)
+    }, this.positionIntervalMs);
+  }
+
+  // Stop position increment interval
+  private stopPositionIncrement(): void {
+    if (this.positionInterval) {
+      clearInterval(this.positionInterval);
+      this.positionInterval = null;
+    }
+  }
+
   // Query initial state from go-librespot REST API
   private async queryInitialState(): Promise<void> {
     try {
@@ -360,7 +400,7 @@ class LibrespotStateService {
       }
 
       const status = await response.json();
-      
+
       // Map REST API response to PlayerState format
       if (status.track) {
         this.currentState.currentTrack = {
@@ -378,7 +418,7 @@ class LibrespotStateService {
 
       this.currentState.isPaused = status.paused === true;
       this.currentState.isActive = !status.stopped && status.track !== null && status.track !== undefined;
-      
+
       // Only set position if it's provided and non-zero (from seek event)
       if (status.position !== undefined && status.position > 0) {
         this.currentState.position = status.position;
@@ -398,6 +438,15 @@ class LibrespotStateService {
       }
       if (status.shuffle_context !== undefined) {
         this.currentState.shuffleContext = status.shuffle_context === true;
+      }
+
+      // Ensure position is initialized if playing
+      if (
+        this.currentState.isPaused === false &&
+        this.currentState.isActive === true &&
+        this.currentState.position === undefined
+      ) {
+        this.currentState.position = 0;
       }
 
       // Notify state change to update any waiting pollers
